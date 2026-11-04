@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/cli",
+    "modules/platform-common",
+    "modules/hardware-intelligence",
+    "modules/shared-prefix",
+    "modules/compatibility-engine",
+    "modules/application-management/app-installer",
+    "modules/application-management/app-library",
+    "modules/application-management/bundle-inspector",
+    "services/execution-manager",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "GPL-3.0-or-later"
+authors = ["Darling Platform contributors"]
+publish = false
