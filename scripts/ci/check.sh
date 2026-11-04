@@ -35,6 +35,9 @@ cmake --build "$build_dir"
 step "ctest --test-dir ${build_dir}"
 ctest --test-dir "$build_dir" --output-on-failure
 
+step "tests/install/test_darling_pin.sh"
+tests/install/test_darling_pin.sh
+
 step "tests/packaging/test_packaging.sh"
 tests/packaging/test_packaging.sh
 
