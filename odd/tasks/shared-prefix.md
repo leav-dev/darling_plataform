@@ -85,7 +85,7 @@ plataforma no necesita root, pero invoca un binario setuid: queda documentado en
 | T4 | S2, S3 | Adaptador `Darling` + `PrefixManager` (`inspect`, `validate`, `start`, `stop`) | `cf17087` |
 | T5 | S2 | CLI `dg prefix status\|validate\|start\|stop` con salida texto y `--json` | `45db3cb` |
 | T6 | S2 | Documentación: recuperación, dependencias, switches de entorno y mapa del repo | `0613e0c` |
-| T8 | S6 | Pin de Darling: archivo de dependencia, constante embebida, reporte en `status` y script de instalación verificado | por commitear |
+| T8 | S6 | Pin de Darling: archivo de dependencia, constante embebida, reporte en `status` y script de instalación verificado | `7715eac`, `6cd859f`, `c26d2ec`, `f073140` |
 
 ## Log
 
@@ -168,7 +168,7 @@ CTest) verde, más prueba de extremo a extremo con un `darling` falso:
 ### L7 — Pin de Darling (S6)
 
 - Fuente del pin: release estable `v0.1.20260608` con assets `debs_20260608.zip`
-  (`ssh256 2746…c1fd`) y `darling-source.tar.xz` (`sha256 4fc9…8df7`), verificados
+  (`sha256 2746…c1fd`) y `darling-source.tar.xz` (`sha256 4fc9…8df7`), verificados
   contra la API de GitHub.
 - `deps/darling.toml` es la única fuente de verdad; `pin.rs` la embebe con
   `include_str!` y una prueba fija los valores, así que un bump sin actualizar el
@@ -180,3 +180,20 @@ CTest) verde, más prueba de extremo a extremo con un `darling` falso:
 - `scripts/dev/install-darling-pin.sh` descarga el asset del release, verifica el
   sha256 y muestra el `dpkg -i` exacto; no ejecuta nada destructivo sin `--yes` y
   nunca corre por sí solo desde CI.
+
+### L8 — Verificación del pin (2026-11-04)
+
+| Comprobación | Resultado |
+| --- | --- |
+| `cargo test --workspace --locked` | 92 pruebas, 0 fallos (6 nuevas de pin) |
+| `scripts/ci/check.sh` | verde completo |
+| `dg prefix status` | `pin: v0.1.20260608 (commit e947f0d5a3c6)` |
+| `dg prefix status --json` | `darling_pin.version == "v0.1.20260608"` |
+| `install-darling-pin.sh --dry-run` | URL del tag pineado, hash y destino correctos |
+| `install-darling-pin.sh --help` / argumento inválido | texto de uso / exit 2 |
+| Hashes de assets | verificados contra la API de GitHub (debs y fuentes) |
+| Commit del tag | `e947f0d5a3c6bba27e3631d9bf0da2a9840e6894` vía `git ls-remote` |
+
+**No verificado a propósito:** la descarga real del asset (118 MB) y la instalación
+con `dpkg` no se ejecutaron: instalan paquetes setuid root en el sistema y esa
+decisión es del usuario. La matriz de compatibilidad sigue vacía por la misma razón.
