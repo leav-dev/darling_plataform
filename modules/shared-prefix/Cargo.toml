@@ -9,3 +9,9 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+rustix = { version = "1.1.6", features = ["fs"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[dev-dependencies]
+tempfile = "3.27.0"

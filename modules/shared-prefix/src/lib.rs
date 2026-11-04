@@ -11,6 +11,29 @@
 //!
 //! The reported states are the platform's own orchestration states; they are not
 //! Darling's official internal states and must not be presented as such.
+//!
+//! # Module map
+//!
+//! - [`error`] — the typed failures every operation reports.
+//! - [`location`] — where the dedicated prefix and the platform data directory
+//!   live, resolved from an injected environment (never from the process inside
+//!   library code).
+//! - [`state`] — the persisted lifecycle phase, written atomically.
+//!
+//! # Verified Darling facts this crate must respect
+//!
+//! `DPREFIX` selects the prefix and must be exported to child processes; there is
+//! no initialisation command, so a prefix appears on the first Darling run; and
+//! Darling cannot be asked whether its container is alive, so the phase is ours.
+//! See `ADR-0008`.
+
+pub mod error;
+pub mod location;
+pub mod state;
+
+pub use error::{Error, Result};
+pub use location::{MAX_PREFIX_PATH_BYTES, PrefixEnv, PrefixLocation};
+pub use state::{Phase, StateRecord, StateStore};
 
 #[cfg(test)]
 mod tests {
