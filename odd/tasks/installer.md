@@ -55,10 +55,10 @@ repositorio remoto firmado queda fuera de este corte y es el camino de la Fase 8
 
 | ID | Spec | Entrega | Commits |
 | --- | --- | --- | --- |
-| T1 | S3 | `packaging/deb` + `scripts/packaging/build-deb.sh`: `.deb` reproducible con `dg` | `build(deb)` |
-| T2 | S3 | `scripts/packaging/build-repo.sh`: repositorio plano con `Packages.gz` y firma opcional | `build(repo)` |
-| T3 | S1, S2 | `scripts/install.sh`: un comando, preflight, elevación por paso, verificación final | `feat(install)` |
-| T4 | S3, S4 | Pruebas offline del paquete y del repositorio, integradas a CI | `test(packaging)` |
+| T1 | S3 | `packaging/deb` + `scripts/packaging/build-deb.sh`: `.deb` reproducible con `dg` | `3cb87e5` |
+| T2 | S3 | `scripts/packaging/build-repo.sh`: repositorio plano con `Packages.gz`, `Release`, `--check` y firma opcional | `08c2a6c` |
+| T3 | S1, S2 | `scripts/install.sh`: un comando, preflight, elevación por paso, verificación final | `f326f9f` |
+| T4 | S3, S4 | Pruebas offline del paquete y del repositorio, integradas a CI | `7b15ae6` |
 | T5 | S1, S2 | `docs/installation.md`, README, CHANGELOG y ADR-0010 | `docs(repo)` |
 
 ## Log
@@ -84,3 +84,38 @@ repositorio remoto firmado queda fuera de este corte y es el camino de la Fase 8
 - No se ejecuta `apt-get upgrade` ni se toca nada fuera de los dos paquetes.
 - El desinstalador es el del sistema: `sudo apt remove darling-platform`. El
   DPREFIX con las aplicaciones **no** se borra automáticamente.
+
+### L4 — Verificación (2026-11-04)
+
+| Comprobación | Resultado |
+| --- | --- |
+| `tests/packaging/test_packaging.sh` | 40 comprobaciones, 0 fallos |
+| `dpkg-deb --info dist/darling-platform_0.1.0-1_amd64.deb` | `Package: darling-platform`, `Version: 0.1.0-1`, `Architecture: amd64`, `Installed-Size: 820`, `Section: utils`, `Depends: libc6 (>= 2.39)` |
+| Contenido del paquete | solo `usr/bin/dg` (0755), `copyright`, `changelog.gz`; control con `control` y `md5sums` |
+| Rebuild | byte-idéntico (`6ab2e1dc92da0ddf…`) con `SOURCE_DATE_EPOCH` fijado al último commit |
+| Repositorio | `pool/` + `dists/local/{Release,main/binary-amd64/{Packages,Packages.gz}}`; `--check` acepta y rechaza un paquete alterado |
+| Firma | `--sign` produce `Release.gpg` y exporta el keyring; sin clave falla con mensaje accionable |
+| `scripts/install.sh --dry-run` | exit 0; imprime los cinco pasos, los dos `sudo` y la verificación final |
+| `scripts/ci/check.sh` | verde completo, con la suite de empaquetado como última compuerta |
+
+### L5 — Lo que se agregó a la interfaz del paquete
+
+- `Installed-Size` lo calcula el script: `dpkg-deb` no lo sintetiza (lo hace
+  debhelper) y una comprobación lo exige distinto de cero.
+- El repositorio sin firma imprime `[trusted=yes]`, no `[signed-by=…]`: apt no puede
+  verificar un `Release` sin firmar y afirmar lo contrario sería mentir. Con `--sign`
+  imprime el `signed-by` con el keyring exportado.
+- La arquitectura del repositorio sale de `dpkg --print-architecture` y se compara
+  con cada `.deb`: un archivo mal etiquetado falla en vez de publicarse.
+
+### L6 — Pendiente y límites
+
+- **No se ejecutó** la instalación real: `scripts/install.sh` sin `--dry-run` instala
+  paquetes del sistema (uno setuid root) y necesita la contraseña del usuario. El
+  ensayo completo queda para quien lo corra; el camino está verificado hasta el
+  borde de `sudo`.
+- Repositorio remoto firmado y hosting: Fase 8.
+- `Depends: libc6 (>= 2.39)` ata el paquete a Ubuntu 24.04; se revisa al ampliar la
+  matriz de distribuciones.
+- La suite de empaquetado necesita el registro de Cargo tibio (`cargo fetch`) en una
+  máquina sin red.
