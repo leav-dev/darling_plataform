@@ -1,0 +1,22 @@
+# Rust build output
+/target/
+**/target/
+
+# CMake build trees
+/build/
+build-*/
+cmake-build-*/
+
+# Tool caches
+.atl/.skill-registry.cache.json
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
