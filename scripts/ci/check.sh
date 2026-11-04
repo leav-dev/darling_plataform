@@ -35,4 +35,7 @@ cmake --build "$build_dir"
 step "ctest --test-dir ${build_dir}"
 ctest --test-dir "$build_dir" --output-on-failure
 
+step "tests/packaging/test_packaging.sh"
+tests/packaging/test_packaging.sh
+
 printf '\nAll gates passed.\n'

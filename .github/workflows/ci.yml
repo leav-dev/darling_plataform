@@ -48,3 +48,5 @@ jobs:
         run: cmake --install build --prefix "$RUNNER_TEMP/prefix"
       - name: Smoke-test the installed binary
         run: '"$RUNNER_TEMP/prefix/bin/dg" --version'
+      - name: Packaging (deb + local apt repository)
+        run: tests/packaging/test_packaging.sh
