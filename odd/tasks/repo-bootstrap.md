@@ -121,5 +121,17 @@ Ejecutado sobre `feat/repo-bootstrap` con árbol limpio:
 | Enlaces relativos | verificación de todos los `.md` | todos resuelven |
 | YAML de CI | parseo de `.github/workflows/ci.yml` | válido, jobs `rust` y `native` |
 
-Pendiente fuera de este corte: `cargo fmt`/`clippy` sobre un toolchain distinto al
-local (lo cubre CI) y la ejecución del workflow en GitHub, que requiere remoto.
+### L5 — Publicación y CI real (2026-11-04)
+
+- Remoto `origin` = `github.com:leav-dev/darling_plataform` (SSH; el token HTTPS
+  disponible no tiene el scope `workflow` que GitHub exige para publicar
+  `.github/workflows/`).
+- `main` y `feat/repo-bootstrap` publicados en `23a5550`; `main` es la rama por
+  defecto y es fast-forward de la rama, sin reescritura.
+- Run `41871363666` en `main`: jobs `Rust (fmt, clippy, tests)` y `CMake build`
+  verdes en 14 s. Con eso queda cubierto el toolchain distinto al local.
+- Aviso del runner: `actions/checkout@v4` apunta a Node 20 (deprecado). Se sube a
+  `v5`; el cambio y su re-ejecución se registran en el commit siguiente.
+
+Fuera de alcance de este corte: `tests/`, `packaging/`, `integrations/`,
+`runtimes/`, `apps/application-center/` y la lógica de cualquier módulo.
