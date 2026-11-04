@@ -309,6 +309,11 @@ fn render_status(inspection: &Inspection) -> String {
         ),
         format!("busy: {}", yes_no(inspection.busy)),
         format!(
+            "pin: {} (commit {})",
+            inspection.darling_pin.version,
+            &inspection.darling_pin.commit[..12.min(inspection.darling_pin.commit.len())]
+        ),
+        format!(
             "darling: {}{}",
             inspection.darling_program.display(),
             missing_marker(inspection)
@@ -653,6 +658,10 @@ mod tests {
         );
         assert!(text.contains("busy: no\n"), "unexpected output: {text}");
         assert!(
+            text.contains("pin: v0.1.20260608 (commit e947f0d5a3c6)\n"),
+            "the pinned Darling release must be reported: {text}"
+        );
+        assert!(
             text.contains("(not found)"),
             "the missing Darling program must be marked: {text}"
         );
@@ -687,6 +696,10 @@ mod tests {
         assert_eq!(document["phase"].as_str(), Some("not_initialized"));
         assert_eq!(document["interrupted"].as_str(), None);
         assert_eq!(document["busy"].as_bool(), Some(false));
+        assert_eq!(
+            document["darling_pin"]["version"].as_str(),
+            Some("v0.1.20260608")
+        );
         assert_eq!(document["darling_program"].as_str(), Some(MISSING_PROGRAM));
         assert!(
             document["warnings"].is_array(),

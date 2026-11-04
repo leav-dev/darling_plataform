@@ -112,6 +112,8 @@ pub struct Inspection {
     pub darling_program: PathBuf,
     /// Whether that program could be found on disk.
     pub darling_present: bool,
+    /// The Darling release this build is pinned to.
+    pub darling_pin: crate::pin::DarlingPin,
     /// Problems the operator should know about, verbatim and non-fatal.
     pub warnings: Vec<String>,
 }
@@ -203,6 +205,7 @@ impl PrefixManager {
             busy,
             darling_program: self.darling.program().to_path_buf(),
             darling_present,
+            darling_pin: crate::pin::pinned(),
             warnings,
         })
     }

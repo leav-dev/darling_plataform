@@ -21,6 +21,8 @@
 //! - [`state`] — the persisted lifecycle phase, written atomically.
 //! - [`lock`] — the advisory read/write lock that serialises lifecycle
 //!   operations.
+//! - [`pin`] — the Darling release this build targets, embedded from
+//!   `deps/darling.toml`.
 //! - [`darling`] — the adapter that runs the verified Darling commands with
 //!   `DPREFIX` exported to the child.
 //! - [`manager`] — the lifecycle authority: `inspect`, `validate`, `start` and
@@ -38,6 +40,7 @@ pub mod error;
 pub mod location;
 pub mod lock;
 pub mod manager;
+pub mod pin;
 pub mod state;
 
 pub use darling::{CommandOutcome, Darling, SystemDarling};
@@ -45,6 +48,7 @@ pub use error::{Error, Result};
 pub use location::{MAX_PREFIX_PATH_BYTES, PrefixEnv, PrefixLocation};
 pub use lock::PrefixLock;
 pub use manager::{Check, CheckStatus, Inspection, PrefixManager, Validation};
+pub use pin::{DarlingPin, PIN_FILE, pinned};
 pub use state::{Phase, StateRecord, StateStore};
 
 #[cfg(test)]
