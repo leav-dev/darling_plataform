@@ -9,6 +9,10 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- Pin de Darling `v0.1.20260608` (commit `e947f0d5…`) en `deps/darling.toml`,
+  embebido en el binario y reportado por `dg prefix status`; script de instalación
+  que verifica el sha256 del asset antes de instalar.
+- ADR-0009: política de pin de Darling y verificación de instalación.
 - Shared Prefix Manager: ciclo de vida del DPREFIX dedicado con estados
   persistidos, locks de lectura/escritura, validación por checks y recuperación de
   operaciones interrumpidas (`modules/shared-prefix`).

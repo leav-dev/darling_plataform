@@ -74,6 +74,9 @@ cmake --install build --prefix /tmp/dp-prefix
 
 # Todas las compuertas de CI, en orden
 scripts/ci/check.sh
+
+# Darling pineado (ver docs/compatibility/darling-pin.md)
+scripts/dev/install-darling-pin.sh --dry-run
 ```
 
 Opciones relevantes:
@@ -87,6 +90,7 @@ Opciones relevantes:
 | `DPREFIX` | `~/.local/share/darling-platform/prefix` | Prefijo dedicado; el convencional `~/.darling` se rechaza |
 | `XDG_DATA_HOME` | `~/.local/share` | Raíz del directorio de datos de la plataforma |
 | `DG_DARLING` | `darling` | Binario de Darling que invoca el adaptador |
+| `XDG_CACHE_HOME` | `~/.cache` | Caché de la descarga verificada del pin de Darling |
 
 El build de CMake usa `--target-dir` dentro del árbol de build: **nunca** escribe
 en `./target` ni en el árbol de fuentes. Si una regla nueva rompe eso, es un

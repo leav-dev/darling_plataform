@@ -99,6 +99,7 @@ datos de una importación y de un lanzamiento, en
 | `modules/application-management/` | `app-installer`, `app-library` y `bundle-inspector`. |
 | `services/execution-manager/` | Límite del daemon de sesión. |
 | `cmake/` | `Rust.cmake`: CMake orquesta, Cargo compila. |
+| `deps/darling.toml` | Pin de Darling: versión, commit, assets verificables y parches. |
 | `docs/architecture/` | Visión general, componentes, flujos de datos y ADR. |
 | `odd/tasks/` | Documentos de trabajo por feature: specs, tareas y bitácora. |
 | `scripts/` | `dev/env-check.sh` y `ci/check.sh`. |
@@ -114,7 +115,9 @@ es una dirección, no una obligación de crear directorios vacíos.
 - Linux x86-64 (AArch64 se prepara, no se promete).
 - Rust **1.85** o superior (edición 2024) con `rustfmt` y `clippy`.
 - CMake **3.20** o superior; Ninja es opcional y recomendado.
-- Ningún paso de compilación, escaneo o ejecución requiere root.
+- Ningún paso de compilación, escaneo o ejecución de la plataforma requiere root.
+  Darling sí se instala como binario **setuid root**; el detalle está en
+  [`docs/compatibility/darling-pin.md`](docs/compatibility/darling-pin.md).
 
 Comprobación del entorno:
 
@@ -157,6 +160,8 @@ de commits y el proceso para agregar un crate están en
 - [`DEVELOPMENT.md`](DEVELOPMENT.md) — entorno, build, pruebas y convenciones.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — flujo de contribución y checklist de PR.
 - [`SECURITY.md`](SECURITY.md) — modelo de amenaza y reporte de vulnerabilidades.
+- [`docs/compatibility/darling-pin.md`](docs/compatibility/darling-pin.md) — versión
+  de Darling fijada, instalación verificada y matriz de compatibilidad.
 - [`docs/architecture/`](docs/architecture/) — visión general, componentes, flujos
   y ADR.
 - [`CHANGELOG.md`](CHANGELOG.md) — cambios por versión.

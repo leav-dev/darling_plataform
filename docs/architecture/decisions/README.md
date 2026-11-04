@@ -36,3 +36,4 @@ es documentación de cómo funciona algo; para eso están
 | [0006](ADR-0006-darling-nucleo-externo.md) | Darling como núcleo externo de compatibilidad | aceptada |
 | [0007](ADR-0007-rust-y-cmake.md) | Rust para los módulos y CMake para el build | aceptada |
 | [0008](ADR-0008-ciclo-de-vida-prefix.md) | Ciclo de vida verificado del DPREFIX de Darling | aceptada |
+| [0009](ADR-0009-pin-de-darling.md) | Pin de Darling y verificación de instalación | aceptada |
