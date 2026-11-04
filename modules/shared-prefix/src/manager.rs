@@ -26,6 +26,8 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
+
 use crate::darling::{CommandOutcome, Darling};
 use crate::error::{Error, Result};
 use crate::location::{MAX_PREFIX_PATH_BYTES, PrefixLocation};
@@ -49,7 +51,8 @@ const START_ARGS: [&str; 2] = ["shell", "/usr/bin/true"];
 const STOP_ARGS: [&str; 1] = ["shutdown"];
 
 /// Result of one validation check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CheckStatus {
     /// The check holds.
     Pass,
@@ -62,7 +65,7 @@ pub enum CheckStatus {
 }
 
 /// One named validation check.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Check {
     /// Stable check name, part of the CLI's output contract.
     pub name: &'static str,
@@ -73,7 +76,7 @@ pub struct Check {
 }
 
 /// The full validation report.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Validation {
     /// Every check, in a stable order.
     pub checks: Vec<Check>,
@@ -93,7 +96,7 @@ impl Validation {
 }
 
 /// A non-blocking snapshot of the prefix.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Inspection {
     /// The dedicated prefix the platform manages.
     pub prefix: PathBuf,
@@ -107,6 +110,8 @@ pub struct Inspection {
     pub busy: bool,
     /// Program that will be invoked for lifecycle operations.
     pub darling_program: PathBuf,
+    /// Whether that program could be found on disk.
+    pub darling_present: bool,
     /// Problems the operator should know about, verbatim and non-fatal.
     pub warnings: Vec<String>,
 }
@@ -175,7 +180,9 @@ impl PrefixManager {
             ));
         }
 
-        if !program_on_disk(self.darling.program()) {
+        let darling_present = program_on_disk(self.darling.program());
+
+        if !darling_present {
             warnings.push(format!(
                 "the Darling program '{}' was not found on disk; lifecycle operations will fail \
                  with DarlingUnavailable until Darling is installed or DG_DARLING points at a \
@@ -184,11 +191,9 @@ impl PrefixManager {
             ));
         }
 
-        // Probing with `try_exclusive` never waits: the lock is dropped immediately
-        // after it tells us whether another process is mid-operation.
-        let probe = PrefixLock::try_exclusive(&self.location.lock_path())?;
-        let busy = probe.is_none();
-        drop(probe);
+        // The probe neither waits nor creates the lock file, so a read-only
+        // command cannot leave a trace on disk.
+        let busy = PrefixLock::probe_busy(&self.location.lock_path())?;
 
         Ok(Inspection {
             prefix,
@@ -197,6 +202,7 @@ impl PrefixManager {
             interrupted,
             busy,
             darling_program: self.darling.program().to_path_buf(),
+            darling_present,
             warnings,
         })
     }
@@ -826,6 +832,32 @@ mod tests {
             .iter()
             .find(|check| check.name == name)
             .unwrap_or_else(|| panic!("missing check '{name}'"))
+    }
+
+    #[test]
+    fn inspect_leaves_no_trace_on_disk() {
+        let (_dir, location) = fixture();
+        let fake = FakeDarling::succeeding();
+
+        let inspection = manager(&location, &fake)
+            .inspect()
+            .expect("inspect must succeed");
+
+        assert!(!inspection.exists);
+        assert_eq!(inspection.phase, Phase::NotInitialized);
+        assert!(!inspection.busy);
+        assert!(
+            !location.state_path().exists(),
+            "a read-only inspection must not write a state record"
+        );
+        assert!(
+            !location.lock_path().exists(),
+            "a read-only inspection must not create the lock file"
+        );
+        assert!(
+            !location.data_dir().exists(),
+            "a read-only inspection must not create the platform data directory"
+        );
     }
 
     #[test]

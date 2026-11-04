@@ -29,6 +29,11 @@ version = "0.1.0"
 [[package]]
 name = "dp-cli"
 version = "0.1.0"
+dependencies = [
+ "dp-shared-prefix",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "dp-compatibility-engine"

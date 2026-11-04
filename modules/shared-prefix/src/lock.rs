@@ -57,6 +57,33 @@ impl PrefixLock {
         }
     }
 
+    /// Reports whether another handle currently holds a lock on `path`.
+    ///
+    /// Unlike [`PrefixLock::try_exclusive`], this never creates the lock file or
+    /// its parents: an absent file means no operation is running. A read-only
+    /// command such as `dg prefix status` therefore leaves no trace on disk.
+    pub fn probe_busy(path: &Path) -> Result<bool> {
+        let file = match OpenOptions::new().read(true).write(true).open(path) {
+            Ok(file) => file,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(source) => {
+                return Err(Error::Io {
+                    path: path.to_path_buf(),
+                    source,
+                });
+            }
+        };
+
+        match rustix::fs::flock(&file, FlockOperation::NonBlockingLockExclusive) {
+            Ok(()) => {
+                let _ = rustix::fs::flock(&file, FlockOperation::Unlock);
+                Ok(false)
+            }
+            Err(errno) if is_busy(errno) => Ok(true),
+            Err(errno) => Err(io_error(path, errno)),
+        }
+    }
+
     /// Path of the lock file.
     pub fn path(&self) -> &Path {
         &self.path
@@ -136,6 +163,40 @@ mod tests {
 
     fn lock_path(dir: &tempfile::TempDir) -> PathBuf {
         dir.path().join("darling-platform").join("prefix.lock")
+    }
+
+    #[test]
+    fn probe_busy_does_not_create_the_lock_file() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = lock_path(&dir);
+
+        assert!(
+            !PrefixLock::probe_busy(&path).expect("probe on an absent file"),
+            "an absent lock file means no operation is running"
+        );
+        assert!(!path.exists(), "the probe must not create the lock file");
+        assert!(
+            !dir.path().join("darling-platform").exists(),
+            "the probe must not create the lock directory either"
+        );
+    }
+
+    #[test]
+    fn probe_busy_reports_a_held_lock_and_clears_after_release() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = lock_path(&dir);
+
+        let held = PrefixLock::acquire_shared(&path).expect("shared lock");
+        assert!(
+            PrefixLock::probe_busy(&path).expect("probe while held"),
+            "a shared holder makes the exclusive probe busy"
+        );
+
+        drop(held);
+        assert!(
+            !PrefixLock::probe_busy(&path).expect("probe after release"),
+            "a released lock stops being busy"
+        );
     }
 
     #[test]
