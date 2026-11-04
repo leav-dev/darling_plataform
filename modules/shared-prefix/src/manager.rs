@@ -210,6 +210,32 @@ impl PrefixManager {
         })
     }
 
+    /// Creates the directory that will hold the prefix, never the prefix itself.
+    ///
+    /// Darling creates the prefix with a plain `mkdir`, so a `DPREFIX` whose parent
+    /// does not exist fails with "No such file or directory" before it can do
+    /// anything. The parent is the platform's path, not one of Darling's internal
+    /// directories (ADR-0008, decision 5), so creating it here is ours to do.
+    fn ensure_prefix_parent(&self) -> Result<()> {
+        let Some(parent) = self
+            .location
+            .path()
+            .parent()
+            .filter(|dir| !dir.as_os_str().is_empty())
+        else {
+            return Ok(());
+        };
+
+        if parent.exists() {
+            return Ok(());
+        }
+
+        std::fs::create_dir_all(parent).map_err(|source| Error::Io {
+            path: parent.to_path_buf(),
+            source,
+        })
+    }
+
     /// Validates the prefix under the shared lock and reports every check.
     ///
     /// The shared lock keeps the report consistent with concurrent readers and
@@ -222,6 +248,7 @@ impl PrefixManager {
 
         let checks = vec![
             prefix_exists_check(self.location.path()),
+            prefix_parent_check(self.location.path()),
             is_directory_check(self.location.path()),
             not_symlink_check(self.location.path()),
             owned_by_current_user_check(self.location.path(), current_uid),
@@ -244,6 +271,7 @@ impl PrefixManager {
     /// of a silence.
     pub fn start(&self) -> Result<Phase> {
         let _lock = self.lock_exclusive()?;
+        self.ensure_prefix_parent()?;
         let store = self.state_store();
         let transitional = if self.location.path().exists() {
             Phase::Starting
@@ -374,6 +402,67 @@ fn program_on_disk(program: &Path) -> bool {
 /// uid the platform runs as.
 fn current_uid() -> u32 {
     rustix::process::getuid().as_raw()
+}
+
+/// Whether the directory that will hold the prefix is usable.
+///
+/// Darling creates the prefix with a plain `mkdir`, so a missing parent makes the
+/// first `start` fail before Darling can do anything. `start` creates it, and this
+/// check says so before the operator hits the error.
+fn prefix_parent_check(prefix: &Path) -> Check {
+    const NAME: &str = "prefix_parent";
+
+    let Some(parent) = prefix.parent().filter(|dir| !dir.as_os_str().is_empty()) else {
+        return Check {
+            name: NAME,
+            status: CheckStatus::Pass,
+            detail: String::from("the prefix sits at the filesystem root"),
+        };
+    };
+
+    if parent.is_dir() {
+        return match rustix::fs::access(parent, rustix::fs::Access::WRITE_OK) {
+            Ok(()) => Check {
+                name: NAME,
+                status: CheckStatus::Pass,
+                detail: format!("'{}' exists and is writable", parent.display()),
+            },
+            Err(_) => Check {
+                name: NAME,
+                status: CheckStatus::Fail,
+                detail: format!(
+                    "'{}' exists but the current user cannot write to it, so `dg prefix start` \
+                     could not create the prefix",
+                    parent.display()
+                ),
+            },
+        };
+    }
+
+    let (status, detail) = if parent.exists() {
+        (
+            CheckStatus::Fail,
+            format!(
+                "'{}' is not a directory, so the prefix cannot be created below it",
+                parent.display()
+            ),
+        )
+    } else {
+        (
+            CheckStatus::Warn,
+            format!(
+                "'{}' does not exist yet; `dg prefix start` creates it (Darling only creates the \
+                 prefix itself)",
+                parent.display()
+            ),
+        )
+    };
+
+    Check {
+        name: NAME,
+        status,
+        detail,
+    }
 }
 
 fn prefix_exists_check(prefix: &Path) -> Check {
@@ -860,6 +949,71 @@ mod tests {
         assert!(
             !location.data_dir().exists(),
             "a read-only inspection must not create the platform data directory"
+        );
+    }
+
+    #[test]
+    fn start_creates_the_missing_prefix_parent_but_never_the_prefix() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        let location = location_in(&root.join("does/not/exist/prefix"), &root.join("data"));
+        let fake = FakeDarling::succeeding();
+
+        let phase = manager(&location, &fake)
+            .start()
+            .expect("start must succeed");
+
+        assert_eq!(phase, Phase::Running);
+        assert!(
+            root.join("does/not/exist").is_dir(),
+            "the platform must create the directory that holds the prefix"
+        );
+        assert!(
+            !location.path().exists(),
+            "the prefix itself is Darling's to create"
+        );
+        assert_eq!(
+            fake.calls().len(),
+            1,
+            "Darling must still be the one starting"
+        );
+    }
+
+    #[test]
+    fn validate_warns_about_a_missing_prefix_parent() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        let location = location_in(&root.join("absent/prefix"), &root.join("data"));
+
+        let validation = manager(&location, &FakeDarling::succeeding())
+            .validate()
+            .expect("validate must succeed");
+
+        assert_eq!(
+            check(&validation, "prefix_parent").status,
+            CheckStatus::Warn
+        );
+    }
+
+    #[test]
+    fn validate_fails_when_the_prefix_parent_is_not_a_directory() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        let blocker = root.join("blocked");
+        std::fs::write(&blocker, b"not a directory").expect("write blocker");
+        let location = location_in(&blocker.join("prefix"), &root.join("data"));
+
+        let validation = manager(&location, &FakeDarling::succeeding())
+            .validate()
+            .expect("validate must succeed");
+
+        assert_eq!(
+            check(&validation, "prefix_parent").status,
+            CheckStatus::Fail
+        );
+        assert!(
+            !validation.passed(),
+            "a blocking parent must fail validation"
         );
     }
 

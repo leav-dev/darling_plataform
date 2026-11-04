@@ -7,6 +7,16 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `dg prefix start` crea el directorio padre del prefijo antes de invocar Darling,
+  que solo crea el prefijo y fallaba con `No such file or directory` cuando la ruta
+  contenedora no existía. `dg prefix validate` reporta ese caso con el check
+  `prefix_parent`.
+- El instalador de Darling descubre los paquetes recorriendo el árbol extraído (el
+  release los pone en un subdirectorio fechado) e instala con `apt-get` en lugar de
+  `dpkg -i`.
+
 ### Added
 
 - Instalador de un comando (`scripts/install.sh`): instala el Darling pineado

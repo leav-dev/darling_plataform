@@ -131,3 +131,4 @@ y el hosting remoto llegan con la Fase 8.
 | `sudo was refused` | Cancelaste la contraseña | Nada se instaló; reintentá cuando quieras |
 | `dg is not on PATH` | `/usr/bin` fuera del PATH | Revisá el PATH o usá `/usr/bin/dg` |
 | `darling shell uname` no dice `Darwin` | Darling instalado pero sin funcionar | Ver [`compatibility/darling-pin.md`](compatibility/darling-pin.md) |
+| `Cannot create /ruta/dp: No such file or directory` | El **directorio padre** del prefijo no existe: Darling hace `mkdir` del prefijo, no de su ruta | `mkdir -p /ruta` antes de `darling`; `dg prefix start` ya lo crea solo |

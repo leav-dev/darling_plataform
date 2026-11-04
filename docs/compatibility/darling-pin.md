@@ -45,8 +45,15 @@ resuelve el orden y las dependencias.
 Comprobación posterior:
 
 ```bash
+mkdir -p /tmp/darling-check
 DPREFIX=/tmp/darling-check/dp darling shell uname    # debe imprimir: Darwin
 ```
+
+El `mkdir -p` no es opcional si el prefijo va dentro de una ruta que todavía no
+existe: Darling crea **el prefijo**, no sus directorios padre, y falla con
+`Cannot create <ruta>: No such file or directory`. El Shared Prefix Manager lo
+resuelve por vos: `dg prefix start` crea solo el padre y deja que Darling cree el
+prefijo.
 
 > **`darling` es setuid root.** El binario aborta si no corre con privilegios
 > efectivos de root (`missingSetuidRoot` en `src/startup/darling.c`). La plataforma

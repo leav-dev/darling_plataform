@@ -82,8 +82,8 @@ Implementación actual:
 | Operación | Comando | Efecto |
 | --- | --- | --- |
 | Consulta | `dg prefix status [--json]` | Reporta ubicación, fase, interrupción, lock ocupado y advertencias; no escribe nada |
-| Validación | `dg prefix validate [--json]` | Nueve checks: existencia, tipo, symlink, propiedad, escritura, longitud, ubicación dedicada, datos fuera del prefijo y registro de estado |
-| Arranque | `dg prefix start` | `darling shell /usr/bin/true` con `DPREFIX` exportado; persiste `Initializing`/`Starting` antes de invocar |
+| Validación | `dg prefix validate [--json]` | Diez checks: existencia, **directorio padre**, tipo, symlink, propiedad, escritura, longitud, ubicación dedicada, datos fuera del prefijo y registro de estado |
+| Arranque | `dg prefix start` | Crea el **directorio padre** del prefijo, luego `darling shell /usr/bin/true` con `DPREFIX` exportado; persiste `Initializing`/`Starting` antes de invocar |
 | Apagado | `dg prefix stop [--active-instances N]` | Se niega con instancias activas; si no, `darling shutdown` |
 
 Locks: lecturas concurrentes con lock compartido, operaciones de cambio con lock
