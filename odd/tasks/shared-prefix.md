@@ -63,14 +63,14 @@ Hechos comprobados en la documentación y el código de Darling, no supuestos:
 
 ## Tasks
 
-| ID | Spec | Entrega | Commit |
+| ID | Spec | Entrega | Commits |
 | --- | --- | --- | --- |
-| T1 | S3, S4 | ADR-0008 con el contrato verificado de Darling | `docs(adr)` |
-| T2 | S5 | `PrefixLocation`, errores tipados y registro de estado (`phase`) con escritura atómica | `feat(shared-prefix)` |
-| T3 | S2 | Locks de lectura/escritura sobre archivo de lock + pruebas de concurrencia | `feat(shared-prefix)` |
-| T4 | S2, S3 | Adaptador `Darling` + `PrefixManager` (`inspect`, `validate`, `start`, `stop`) | `feat(shared-prefix)` |
-| T5 | S2 | CLI `dg prefix status\|validate\|start\|stop` con salida texto y `--json` | `feat(cli)` |
-| T6 | S2 | Documentación: mantenimiento, recuperación, límites de filesystem y mapa del repo | `docs(repo)` |
+| T1 | S3, S4 | ADR-0008 con el contrato verificado de Darling | `4875ffa` |
+| T2 | S5 | `PrefixLocation`, errores tipados y registro de estado con escritura atómica | `194b880` |
+| T3 | S2 | Locks de lectura/escritura sobre archivo de lock + pruebas de concurrencia | `56a86ef` |
+| T4 | S2, S3 | Adaptador `Darling` + `PrefixManager` (`inspect`, `validate`, `start`, `stop`) | `cf17087` |
+| T5 | S2 | CLI `dg prefix status\|validate\|start\|stop` con salida texto y `--json` | `45db3cb` |
+| T6 | S2 | Documentación: recuperación, dependencias, switches de entorno y mapa del repo | `0613e0c` |
 
 ## Log
 
@@ -101,3 +101,51 @@ las fases 3 y 5.
   su propia fase y la marca `Error` cuando detecta una operación interrumpida.
 - No se crean directorios internos del prefijo (S5): se ejecuta Darling y se deja
   que él lo estructure.
+
+### L4 — Verificación (2026-11-04)
+
+Árbol limpio, `scripts/ci/check.sh` (fmt, clippy `-D warnings`, 86 pruebas, CMake,
+CTest) verde, más prueba de extremo a extremo con un `darling` falso:
+
+| Comprobación | Resultado |
+| --- | --- |
+| `cargo fmt --all --check` | OK |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | OK, sin warnings |
+| `cargo test --workspace --locked` | 86 pruebas, 0 fallos |
+| `cmake --build build` + `ctest` | OK |
+| `cmake --install --prefix /tmp/dp-install` | `dg` instalado; `prefix status --json` válido |
+| E2E con `DG_DARLING` apuntando a un script | `start` → `started: running`; `stop` con 1 instancia → rechazo; `stop` → `stopped: stopped` |
+| Argumentos realmente invocados | `shell /usr/bin/true` y `shutdown`, ambos con `DPREFIX=/tmp/dp-e2e/prefix` exportado |
+| Estado persistido tras el ciclo | `{"schema_version":1,"phase":"stopped"}` |
+| `prefix status` sin prefijo | no crea directorio, ni estado, ni lock (probado) |
+| Sin Darling instalado | `start` falla con `DarlingUnavailable`, mensaje accionable y estado `error`/`start` |
+
+### L5 — Desvíos registrados
+
+- **Tamaño de los cortes.** La fase completa son ~4.100 líneas con pruebas. T4
+  (adaptador + manager) y T5 (CLI) quedaron como commits únicos aunque superan el
+  objetivo de ~400 líneas: partir un mismo archivo cohesivo habría producido
+  commits intermedios que no compilan. Se registra acá como deuda de revisión; el
+  orden de los commits sí es bisecable.
+- **`CliEnv.darling` es `Arc<dyn Darling>`**, no `Box`: `execute` toma `&CliEnv` y
+  `PrefixManager::new` necesita un adaptador propio `'static`. Se resuelve con un
+  envoltorio local, sin cambiar la API del manager.
+- **Sonda de lock sin efectos.** `PrefixLock::probe_busy` reemplaza al
+  `try_exclusive` de `inspect`: un comando de lectura ya no crea el lock file ni el
+  directorio de datos.
+- **`darling_present` en `Inspection`** reemplaza el match sobre el texto de la
+  advertencia que hacía frágil a la CLI.
+- **uid del proceso** vía `rustix::process::getuid` (se habilitó el feature
+  `process`), en lugar de inferirlo del dueño del lock file.
+- **Sin `init`.** `start` es la única inicialización, porque Darling crea el
+  prefijo on-demand (F2). No se agregó un comando `dg prefix init` que sugiera una
+  operación que Darling no tiene.
+
+### L6 — Pendiente fuera de este corte
+
+- Prueba real contra un Darling instalado (`start`/`stop` en una máquina con
+  Darling), prerequisito de la Fase 0 y único modo de cerrar F3/F4 localmente.
+- Límite de overlayfs en el filesystem superior (`F6`): se documenta y se advierte,
+  pero no se prueba con un montaje real.
+- El conteo de instancias gestionadas lo aporta el llamador; el catálogo real llega
+  con la Fase 3 y el daemon con la Fase 5.
