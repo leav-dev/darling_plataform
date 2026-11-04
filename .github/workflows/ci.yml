@@ -1,25 +1,51 @@
 name: CI
 
-# Gates mirror DEVELOPMENT.md and scripts/ci/check.sh: formatting, lints,
-# tests and a CMake build of the same workspace. Anything that only passes in one
-# of the two paths is a defect.
+# Gates mirror DEVELOPMENT.md and scripts/ci/check.sh: formatting, lints, tests,
+# a CMake build and the packaging suite. Anything that only passes in one of the
+# two paths is a defect.
+#
+# When this runs — and why it does not run everywhere:
+#
+#   push to main      post-merge confirmation that main is green
+#   pull request      the gate that matters: the code that will be merged
+#   manual dispatch   an escape hatch for a branch with no PR yet
+#
+# Pushes to feature branches deliberately do not trigger a run: a branch with a PR
+# is already covered by the `pull_request` event, and running both would test the
+# same tree twice. Documentation-only changes skip CI through `paths-ignore`.
+#
+# Caution when enabling branch protection: if a required check is skipped by
+# `paths-ignore`, GitHub leaves it pending and the PR cannot be merged. Either
+# keep these checks non-required or remove the filter.
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'odd/**'
+      - 'LICENSE'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'odd/**'
+      - 'LICENSE'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   rust:
     name: Rust (fmt, clippy, tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -35,6 +61,7 @@ jobs:
   native:
     name: CMake build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable

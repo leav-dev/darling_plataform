@@ -96,6 +96,20 @@ El build de CMake usa `--target-dir` dentro del árbol de build: **nunca** escri
 en `./target` ni en el árbol de fuentes. Si una regla nueva rompe eso, es un
 defecto.
 
+## Cuándo corre CI
+
+| Evento | ¿Corre? | Por qué |
+| --- | --- | --- |
+| PR abierto o actualizado | Sí | Es el gate que importa: el árbol que se va a mergear |
+| Push a `main` | Sí | Confirmar que `main` quedó verde después del merge |
+| Push a una rama de feature | No | La cubre el evento de PR; correr ambos probaría el mismo árbol dos veces |
+| Cambio de solo documentación | No | `paths-ignore` excluye `**/*.md`, `docs/**`, `odd/**` y `LICENSE` |
+| Manual (`workflow_dispatch`) | Sí | Para una rama sin PR |
+
+Si algún día se exige un check como *required* en la protección de rama, un PR de
+solo documentación quedaría bloqueado: `paths-ignore` lo deja **pendiente**, no
+verde. En ese momento hay que quitar el filtro o dejar de exigir el check.
+
 ## Flujo de trabajo
 
 1. Abrí o buscá un issue que describa el cambio y su criterio de salida.
