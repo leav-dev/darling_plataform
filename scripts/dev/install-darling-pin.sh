@@ -11,8 +11,12 @@
 # an explicit `--yes`, because the resulting `darling` binary is setuid root.
 set -euo pipefail
 
-readonly repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+readonly script_dir="$(cd "$(dirname "$0")" && pwd)"
+readonly repo_root="$(cd "${script_dir}/../.." && pwd)"
 readonly pin_file="${repo_root}/deps/darling.toml"
+
+# shellcheck source=lib/darling-pin.sh
+. "${script_dir}/lib/darling-pin.sh"
 
 install_yes=0
 dry_run=0
@@ -122,7 +126,7 @@ else
     exit 1
 fi
 
-mapfile -t packages < <(find "$package_dir" -name '*.deb' -type f | sort)
+mapfile -t packages < <(discover_packages "$package_dir")
 if [ "${#packages[@]}" -eq 0 ]; then
     printf 'error: no .deb packages found inside %s\n' "$asset_name" >&2
     exit 1
@@ -133,11 +137,11 @@ printf '  %s\n' "${packages[@]#"$package_dir"/}"
 
 if [ "$install_yes" -ne 1 ]; then
     printf '\nnothing installed. To install the verified packages, run:\n'
-    printf '  sudo dpkg -i %s/*.deb\n' "$package_dir"
+    render_install_command "${packages[@]}"
     printf '\nReview first: the resulting darling binary is setuid root.\n'
     exit 0
 fi
 
-printf '\n==> installing with dpkg (sudo)\n'
-sudo dpkg -i "${package_dir}"/*.deb
+printf '\n==> installing with apt (sudo)\n'
+sudo apt-get install -y "${packages[@]}"
 printf '\nDone. Verify with: DPREFIX=/tmp/darling-pin-check/dp darling shell uname\n'

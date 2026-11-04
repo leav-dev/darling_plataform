@@ -77,3 +77,5 @@ jobs:
         run: '"$RUNNER_TEMP/prefix/bin/dg" --version'
       - name: Packaging (deb + local apt repository)
         run: tests/packaging/test_packaging.sh
+      - name: Pinned-Darling installer
+        run: tests/install/test_darling_pin.sh

@@ -35,6 +35,13 @@ Qué garantiza el script:
 4. En sistemas sin `dpkg` no intenta nada raro: señala el archivo de fuentes como
    alternativa.
 
+El asset extrae en un subdirectorio fechado (`debs_20260609/`) y los paquetes de
+adentro llevan la versión del día en que se construyeron
+(`0.1.20260609~noble`), que puede diferir del tag: el tag marca el commit, el
+paquete marca el build. El instalador descubre los `.deb` recorriendo el árbol
+extraído e instala con `apt-get` (no `dpkg -i`) porque son 21 paquetes y apt
+resuelve el orden y las dependencias.
+
 Comprobación posterior:
 
 ```bash
