@@ -13,3 +13,8 @@ name = "dg"
 path = "src/main.rs"
 
 [dependencies]
+dp-shared-prefix = { path = "../../modules/shared-prefix" }
+serde_json = "1.0.154"
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -5,11 +5,11 @@ macOS en Linux**, usando [Darling](https://github.com/darlinghq/darling) como
 núcleo de compatibilidad y construyendo alrededor de él la gestión, el
 diagnóstico, la integración con el escritorio y los perfiles de ejecución.
 
-> **Estado actual: esqueleto compilable.** El repositorio todavía no ejecuta ni
-> instala aplicaciones. Lo que existe hoy es el andamiaje que hace verificable
-> cada paso siguiente: workspace de Cargo con los límites de los módulos
-> declarados, build de CMake, CI, documentación de arquitectura y las primeras
-> decisiones registradas como ADR.
+> **Estado actual: andamiaje completo + Shared Prefix Manager.** El repositorio
+> todavía no instala ni ejecuta aplicaciones: falta Darling en la máquina y faltan
+> las fases 3 y 5. Lo que existe hoy es el esqueleto compilable, la arquitectura
+> documentada con sus ADR, CI verde y el ciclo de vida del DPREFIX dedicado con su
+> CLI (`dg prefix status|validate|start|stop`).
 
 **Darling Platform** es un nombre de trabajo. La decisión sobre el nombre
 definitivo y la organización de repositorios sigue abierta.
@@ -91,22 +91,26 @@ datos de una importación y de un lanzamiento, en
 
 | Ruta | Contenido |
 | --- | --- |
-| `apps/cli/` | Crate `dp-cli` y binario `dg`: versión y ayuda. Sin comandos todavía. |
+| `apps/cli/` | Crate `dp-cli` y binario `dg`: `prefix status`, `validate`, `start`, `stop`. |
 | `modules/platform-common/` | Límite del módulo de identificadores, errores y diagnósticos compartidos. |
 | `modules/hardware-intelligence/` | Límite del DHI: descubrimiento, no decisión. |
-| `modules/shared-prefix/` | Límite del ciclo de vida y los locks del DPREFIX. |
+| `modules/shared-prefix/` | Ciclo de vida del DPREFIX: ubicación, estado persistido, locks y adaptador de Darling. |
 | `modules/compatibility-engine/` | Límite del análisis de requisitos y evidencias. |
 | `modules/application-management/` | `app-installer`, `app-library` y `bundle-inspector`. |
 | `services/execution-manager/` | Límite del daemon de sesión. |
 | `cmake/` | `Rust.cmake`: CMake orquesta, Cargo compila. |
+| `deps/darling.toml` | Pin de Darling: versión, commit, assets verificables y parches. |
 | `docs/architecture/` | Visión general, componentes, flujos de datos y ADR. |
 | `odd/tasks/` | Documentos de trabajo por feature: specs, tareas y bitácora. |
 | `scripts/` | `dev/env-check.sh` y `ci/check.sh`. |
-| `tests/`, `packaging/`, `integrations/`, `runtimes/` | **Aún no existen**: se crean con su primera implementación verificable. |
+| `packaging/deb/` | Control, copyright y plantilla del paquete `darling-platform`. |
+| `scripts/packaging/` | `build-deb.sh` (paquete reproducible) y `build-repo.sh` (repositorio apt local). |
+| `tests/packaging/` | 40 comprobaciones offline del paquete y del repositorio. |
+| `integrations/`, `runtimes/` | **Aún no existen**: se crean con su primera implementación verificable. |
 
-Los crates de los módulos están deliberadamente vacíos: declaran su
-responsabilidad y su no-responsabilidad en la documentación del crate para que el
-límite sea revisable antes de que exista código. La estructura objetivo del plan
+Los crates de los módulos declaran su responsabilidad y su no-responsabilidad en
+la documentación del crate, para que el límite sea revisable antes de que exista
+código. Solo `dp-shared-prefix` tiene lógica hoy; el resto sigue vacío. La estructura objetivo del plan
 es una dirección, no una obligación de crear directorios vacíos.
 
 ## Requisitos
@@ -114,13 +118,30 @@ es una dirección, no una obligación de crear directorios vacíos.
 - Linux x86-64 (AArch64 se prepara, no se promete).
 - Rust **1.85** o superior (edición 2024) con `rustfmt` y `clippy`.
 - CMake **3.20** o superior; Ninja es opcional y recomendado.
-- Ningún paso de compilación, escaneo o ejecución requiere root.
+- Ningún paso de compilación, escaneo o ejecución de la plataforma requiere root.
+  Darling sí se instala como binario **setuid root**; el detalle está en
+  [`docs/compatibility/darling-pin.md`](docs/compatibility/darling-pin.md).
 
 Comprobación del entorno:
 
 ```bash
 scripts/dev/env-check.sh
 ```
+
+## Instalación en un comando
+
+En Debian/Ubuntu x86-64, desde un checkout:
+
+```bash
+scripts/install.sh --dry-run   # muestra cada comando, no ejecuta nada
+scripts/install.sh             # instala Darling pineado + darling-platform
+```
+
+El script corre **sin privilegios** y eleva solo los dos pasos que los necesitan
+(`dpkg` de Darling y `apt-get install` del paquete propio), pidiendo la contraseña
+una vez con `sudo`. No deja ninguna shell root y se niega a correr entero como
+root. Detalle completo, opciones y desinstalación en
+[`docs/installation.md`](docs/installation.md).
 
 ## Compilar y verificar
 
@@ -157,6 +178,10 @@ de commits y el proceso para agregar un crate están en
 - [`DEVELOPMENT.md`](DEVELOPMENT.md) — entorno, build, pruebas y convenciones.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — flujo de contribución y checklist de PR.
 - [`SECURITY.md`](SECURITY.md) — modelo de amenaza y reporte de vulnerabilidades.
+- [`docs/installation.md`](docs/installation.md) — instalación en un comando y
+  desinstalación.
+- [`docs/compatibility/darling-pin.md`](docs/compatibility/darling-pin.md) — versión
+  de Darling fijada, instalación verificada y matriz de compatibilidad.
 - [`docs/architecture/`](docs/architecture/) — visión general, componentes, flujos
   y ADR.
 - [`CHANGELOG.md`](CHANGELOG.md) — cambios por versión.

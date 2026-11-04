@@ -7,6 +7,9 @@
 build-*/
 cmake-build-*/
 
+# Packaging output (.deb, staged tree, apt repository)
+/dist/
+
 # Tool caches
 .atl/.skill-registry.cache.json
 

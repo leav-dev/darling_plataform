@@ -1,0 +1,30 @@
+# Darling build the platform is developed and tested against.
+#
+# This file is the single source of truth for the pinned version, the exact
+# commit and the release assets. `modules/shared-prefix/src/pin.rs` embeds it at
+# compile time and a test pins the values, so bumping the version is a code change
+# with a review, not a silent drift.
+
+[darling]
+version = "v0.1.20260608"
+commit = "e947f0d5a3c6bba27e3631d9bf0da2a9840e6894"
+tag_url = "https://github.com/darlinghq/darling/releases/tag/v0.1.20260608"
+published_at = "2026-06-09T04:41:09Z"
+prerelease = false
+# Upstream publishes dated snapshots of master, not a semver line. The pin is the
+# release tag, never "master": a moving target cannot be diagnosed.
+channel = "dated stable release"
+
+[assets]
+# Debian/Ubuntu packages built by the release workflow, for a verified install.
+debs_name = "debs_20260608.zip"
+debs_bytes = 118018438
+debs_sha256 = "27469ef3932da2e91dd7fb34b70e3628a3e54b7af9fb5480051f44af35eca1fd"
+source_name = "darling-source.tar.xz"
+source_bytes = 505807588
+source_sha256 = "4fc9eb9a94af2aa396d4fafa0b6bbf0bcd7e210170854d143c080de3b5bb8df7"
+
+[patches]
+# No local patches. When one becomes necessary, record why and where it was sent
+# upstream (ADR-0006). Keep this list empty over cosmetic changes.
+count = 0

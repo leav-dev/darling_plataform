@@ -42,6 +42,14 @@ provienen de afuera:
 | Iconos y recursos | Parseo de formatos no confiables |
 | IPC del daemon | Solicitudes manipuladas para lanzar procesos o tocar archivos arbitrarios |
 
+**Sobre el binario de Darling.** `darling` se instala como **setuid root**: su
+código de arranque aborta si no corre con privilegios efectivos de root
+(`missingSetuidRoot` en `src/startup/darling.c`). La plataforma no necesita root
+para nada de lo suyo, pero ejecuta ese binario: una vulnerabilidad en Darling
+alcanza privilegios de root del sistema anfitrión. Se instala desde un asset
+verificado por sha256 (`scripts/dev/install-darling-pin.sh`) y se reporta como
+riesgo externo, no como riesgo mitigado por esta plataforma.
+
 Controles esperados:
 
 - Extracción en staging y validación de rutas antes de copiar nada.
