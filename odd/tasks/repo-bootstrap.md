@@ -72,14 +72,15 @@ convención vigente del proyecto la fija `PLAN_DARLING_PLATFORM.md`.
 
 ## Tasks
 
-| ID | Spec | Ruta | Commit |
+| ID | Spec | Entrega | Commits |
 | --- | --- | --- | --- |
-| T1 | S1, S5 | Higiene de repositorio, licencia GPL-3.0-or-later, documento ODD | `docs(odd)` + `chore(repo)` |
-| T2 | S3, S4 | Workspace Cargo con los 8 crates del plan y CLI `dg` | `build(rust)` |
-| T3 | S3 | CMake que orquesta cargo, instala `dg` y expone ctest | `build(cmake)` |
-| T4 | S3 | README, DEVELOPMENT, CONTRIBUTING, SECURITY, código de conducta, CHANGELOG | `docs(repo)` |
-| T5 | S3, S4 | `docs/architecture/overview.md`, `components.md`, `data-flow.md`, ADR-0001..0007 | `docs(architecture)` |
-| T6 | S3 | CI de GitHub Actions y scripts `dev`/`ci` | `ci(repo)` |
+| T1 | S1, S5 | Higiene de repositorio, licencia GPL-3.0-or-later, documento ODD | `85994c3`, `bd03634` |
+| T2 | S3, S4 | Workspace Cargo con los 8 crates del plan y CLI `dg` | `204dfe0` |
+| T3 | S3 | CMake que orquesta cargo, instala `dg` y expone ctest | `0d15132` |
+| T4 | S3 | README, DEVELOPMENT, CONTRIBUTING, SECURITY, código de conducta, CHANGELOG | `2289d87`, `e8d422f` |
+| T5 | S3, S4 | `docs/architecture/overview.md`, `components.md`, `data-flow.md`, ADR-0001..0007 | `e4f17c1`, `6667ea4` |
+| T6 | S3 | CI de GitHub Actions y scripts `dev`/`ci` | `2d64b0f` |
+| — | S1 | Plan de referencia versionado en el repositorio | `d7c4968` |
 
 ## Log
 
@@ -100,3 +101,25 @@ criterios de salida transcriptos en S2 y S3.
   CI compila con `--locked`.
 - No se crean `DarlingExternal.cmake` ni `Packaging.cmake` todavía: no tienen
   consumidor real (plan §12.2).
+
+### L4 — Verificación (2026-11-04)
+
+Ejecutado sobre `feat/repo-bootstrap` con árbol limpio:
+
+| Comprobación | Comando | Resultado |
+| --- | --- | --- |
+| Formato | `cargo fmt --all --check` | OK |
+| Lints | `cargo clippy --workspace --all-targets --locked -- -D warnings` | OK, sin warnings |
+| Pruebas | `cargo test --workspace --locked` | 16 pruebas, 0 fallos |
+| Build CMake | `cmake -S . -B build -G Ninja && cmake --build build` | OK |
+| CTest | `ctest --test-dir build --output-on-failure` | 1/1 OK |
+| Instalación | `cmake --install build --prefix /tmp/dp-install` | `bin/dg` instalado; `dg --version` → `dg 0.1.0` |
+| Perfil release | `-DDP_CARGO_PROFILE=release` | OK |
+| Árbol de fuentes intacto | build de CMake sin `./target` previo | no crea `target/` en el checkout |
+| Compuertas locales | `scripts/ci/check.sh` | todas verdes |
+| Entorno | `scripts/dev/env-check.sh` | todas las herramientas OK |
+| Enlaces relativos | verificación de todos los `.md` | todos resuelven |
+| YAML de CI | parseo de `.github/workflows/ci.yml` | válido, jobs `rust` y `native` |
+
+Pendiente fuera de este corte: `cargo fmt`/`clippy` sobre un toolchain distinto al
+local (lo cubre CI) y la ejecución del workflow en GitHub, que requiere remoto.
