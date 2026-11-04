@@ -9,6 +9,13 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- Instalador de un comando (`scripts/install.sh`): instala el Darling pineado
+  verificado por sha256 y el paquete `darling-platform`, elevando privilegios solo
+  en los pasos que los necesitan.
+- Empaquetado `.deb` reproducible de `darling-platform` y repositorio apt local con
+  `Packages.gz`, `Release` y firma GPG opcional.
+- Pruebas offline del paquete y del repositorio, integradas a CI.
+- `ADR-0010`: instalador entregado como paquete `.deb` y contrato de privilegios.
 - Pin de Darling `v0.1.20260608` (commit `e947f0d5…`) en `deps/darling.toml`,
   embebido en el binario y reportado por `dg prefix status`; script de instalación
   que verifica el sha256 del asset antes de instalar.

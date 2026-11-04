@@ -103,7 +103,10 @@ datos de una importación y de un lanzamiento, en
 | `docs/architecture/` | Visión general, componentes, flujos de datos y ADR. |
 | `odd/tasks/` | Documentos de trabajo por feature: specs, tareas y bitácora. |
 | `scripts/` | `dev/env-check.sh` y `ci/check.sh`. |
-| `tests/`, `packaging/`, `integrations/`, `runtimes/` | **Aún no existen**: se crean con su primera implementación verificable. |
+| `packaging/deb/` | Control, copyright y plantilla del paquete `darling-platform`. |
+| `scripts/packaging/` | `build-deb.sh` (paquete reproducible) y `build-repo.sh` (repositorio apt local). |
+| `tests/packaging/` | 40 comprobaciones offline del paquete y del repositorio. |
+| `integrations/`, `runtimes/` | **Aún no existen**: se crean con su primera implementación verificable. |
 
 Los crates de los módulos declaran su responsabilidad y su no-responsabilidad en
 la documentación del crate, para que el límite sea revisable antes de que exista
@@ -124,6 +127,21 @@ Comprobación del entorno:
 ```bash
 scripts/dev/env-check.sh
 ```
+
+## Instalación en un comando
+
+En Debian/Ubuntu x86-64, desde un checkout:
+
+```bash
+scripts/install.sh --dry-run   # muestra cada comando, no ejecuta nada
+scripts/install.sh             # instala Darling pineado + darling-platform
+```
+
+El script corre **sin privilegios** y eleva solo los dos pasos que los necesitan
+(`dpkg` de Darling y `apt-get install` del paquete propio), pidiendo la contraseña
+una vez con `sudo`. No deja ninguna shell root y se niega a correr entero como
+root. Detalle completo, opciones y desinstalación en
+[`docs/installation.md`](docs/installation.md).
 
 ## Compilar y verificar
 
@@ -160,6 +178,8 @@ de commits y el proceso para agregar un crate están en
 - [`DEVELOPMENT.md`](DEVELOPMENT.md) — entorno, build, pruebas y convenciones.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — flujo de contribución y checklist de PR.
 - [`SECURITY.md`](SECURITY.md) — modelo de amenaza y reporte de vulnerabilidades.
+- [`docs/installation.md`](docs/installation.md) — instalación en un comando y
+  desinstalación.
 - [`docs/compatibility/darling-pin.md`](docs/compatibility/darling-pin.md) — versión
   de Darling fijada, instalación verificada y matriz de compatibilidad.
 - [`docs/architecture/`](docs/architecture/) — visión general, componentes, flujos
