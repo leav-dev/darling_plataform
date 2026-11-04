@@ -1,0 +1,29 @@
+# Changelog
+
+Todos los cambios relevantes de este proyecto se documentan en este archivo.
+
+El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el
+proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
+
+## [Unreleased]
+
+### Added
+
+- Esqueleto del monorepo: workspace de Cargo con los ocho módulos del plan de
+  arquitectura, cada uno con su responsabilidad y no-responsabilidad declaradas.
+- CLI `dg` con `--version` y `--help`, y rechazo explícito de entrada
+  desconocida con código de salida 2.
+- Build de CMake que delega la compilación en Cargo, expone las pruebas a CTest e
+  instala `dg` en el prefijo de instalación.
+- Gates de CI y script local equivalente: `cargo fmt --check`,
+  `cargo clippy -D warnings`, `cargo test`, build de CMake y `ctest`.
+- Documentación de arquitectura: visión general, componentes, flujos de datos y
+  ADR-0001 a ADR-0007.
+- Documentación de repositorio: README, guía de desarrollo, contribución,
+  seguridad y código de conducta.
+- Licencia GPL-3.0-or-later.
+
+<!-- TODO(repo-bootstrap): replace OWNER/REPO with the canonical remote once it
+     exists. No URL is invented before that. -->
+
+[Unreleased]: https://github.com/OWNER/REPO/compare/main...HEAD
