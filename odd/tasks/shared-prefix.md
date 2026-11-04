@@ -51,6 +51,20 @@ Hechos comprobados en la documentación y el código de Darling, no supuestos:
 > No asumir comandos, interfaces internas ni comportamientos de Darling sin
 > comprobarlos contra la versión objetivo.
 
+### S6 — Pin de Darling
+
+> vamos a pinear una verion estable de darling para poder menjarlo
+
+Release estable elegida: **v0.1.20260608** (publicada 2026-06-09, commit
+`e947f0d5a3c6bba27e3631d9bf0da2a9840e6894`), con paquetes Debian verificables por
+hash. El pin vive en `deps/darling.toml`, se embebe en el binario y se reporta en
+`dg prefix status`.
+
+Hecho adicional verificado en `src/startup/darling.c`: el binario `darling`
+**exige setuid root** (`geteuid() != 0` aborta con `missingSetuidRoot`). La
+plataforma no necesita root, pero invoca un binario setuid: queda documentado en
+`SECURITY.md` y en ADR-0009.
+
 ### S5 — Restricciones de diseño del plan
 
 > El prefijo será independiente del prefijo convencional del usuario, si existe. La
@@ -71,6 +85,7 @@ Hechos comprobados en la documentación y el código de Darling, no supuestos:
 | T4 | S2, S3 | Adaptador `Darling` + `PrefixManager` (`inspect`, `validate`, `start`, `stop`) | `cf17087` |
 | T5 | S2 | CLI `dg prefix status\|validate\|start\|stop` con salida texto y `--json` | `45db3cb` |
 | T6 | S2 | Documentación: recuperación, dependencias, switches de entorno y mapa del repo | `0613e0c` |
+| T8 | S6 | Pin de Darling: archivo de dependencia, constante embebida, reporte en `status` y script de instalación verificado | por commitear |
 
 ## Log
 
@@ -149,3 +164,19 @@ CTest) verde, más prueba de extremo a extremo con un `darling` falso:
   pero no se prueba con un montaje real.
 - El conteo de instancias gestionadas lo aporta el llamador; el catálogo real llega
   con la Fase 3 y el daemon con la Fase 5.
+
+### L7 — Pin de Darling (S6)
+
+- Fuente del pin: release estable `v0.1.20260608` con assets `debs_20260608.zip`
+  (`ssh256 2746…c1fd`) y `darling-source.tar.xz` (`sha256 4fc9…8df7`), verificados
+  contra la API de GitHub.
+- `deps/darling.toml` es la única fuente de verdad; `pin.rs` la embebe con
+  `include_str!` y una prueba fija los valores, así que un bump sin actualizar el
+  archivo rompe el build.
+- No se implementó detección de la versión instalada: no hay comando documentado
+  que la exponga (`darling <comando>` solo acepta `shell` y `shutdown`). El pin se
+  verifica **antes** de instalar, con el hash del asset y el script de instalación,
+  no adivinando después.
+- `scripts/dev/install-darling-pin.sh` descarga el asset del release, verifica el
+  sha256 y muestra el `dpkg -i` exacto; no ejecuta nada destructivo sin `--yes` y
+  nunca corre por sí solo desde CI.
