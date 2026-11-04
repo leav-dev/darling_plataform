@@ -35,3 +35,4 @@ es documentación de cómo funciona algo; para eso están
 | [0005](ADR-0005-dhi-separado-de-ejecucion.md) | DHI separado de las decisiones de ejecución | aceptada |
 | [0006](ADR-0006-darling-nucleo-externo.md) | Darling como núcleo externo de compatibilidad | aceptada |
 | [0007](ADR-0007-rust-y-cmake.md) | Rust para los módulos y CMake para el build | aceptada |
+| [0008](ADR-0008-ciclo-de-vida-prefix.md) | Ciclo de vida verificado del DPREFIX de Darling | aceptada |
