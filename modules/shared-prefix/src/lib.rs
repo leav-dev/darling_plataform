@@ -19,6 +19,8 @@
 //!   live, resolved from an injected environment (never from the process inside
 //!   library code).
 //! - [`state`] — the persisted lifecycle phase, written atomically.
+//! - [`lock`] — the advisory read/write lock that serialises lifecycle
+//!   operations.
 //!
 //! # Verified Darling facts this crate must respect
 //!
@@ -29,10 +31,12 @@
 
 pub mod error;
 pub mod location;
+pub mod lock;
 pub mod state;
 
 pub use error::{Error, Result};
 pub use location::{MAX_PREFIX_PATH_BYTES, PrefixEnv, PrefixLocation};
+pub use lock::PrefixLock;
 pub use state::{Phase, StateRecord, StateStore};
 
 #[cfg(test)]
