@@ -1,0 +1,50 @@
+name: CI
+
+# Gates mirror DEVELOPMENT.md and scripts/ci/check.sh: formatting, lints,
+# tests and a CMake build of the same workspace. Anything that only passes in one
+# of the two paths is a defect.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Lints
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+
+  native:
+    name: CMake build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Configure
+        run: cmake -S . -B build -G Ninja
+      - name: Build
+        run: cmake --build build
+      - name: CTest
+        run: ctest --test-dir build --output-on-failure
+      - name: Install into a scratch prefix
+        run: cmake --install build --prefix "$RUNNER_TEMP/prefix"
+      - name: Smoke-test the installed binary
+        run: '"$RUNNER_TEMP/prefix/bin/dg" --version'
