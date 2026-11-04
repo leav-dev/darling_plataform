@@ -21,6 +21,10 @@
 //! - [`state`] — the persisted lifecycle phase, written atomically.
 //! - [`lock`] — the advisory read/write lock that serialises lifecycle
 //!   operations.
+//! - [`darling`] — the adapter that runs the verified Darling commands with
+//!   `DPREFIX` exported to the child.
+//! - [`manager`] — the lifecycle authority: `inspect`, `validate`, `start` and
+//!   `stop` over that adapter and the persisted phase.
 //!
 //! # Verified Darling facts this crate must respect
 //!
@@ -29,14 +33,18 @@
 //! Darling cannot be asked whether its container is alive, so the phase is ours.
 //! See `ADR-0008`.
 
+pub mod darling;
 pub mod error;
 pub mod location;
 pub mod lock;
+pub mod manager;
 pub mod state;
 
+pub use darling::{CommandOutcome, Darling, SystemDarling};
 pub use error::{Error, Result};
 pub use location::{MAX_PREFIX_PATH_BYTES, PrefixEnv, PrefixLocation};
 pub use lock::PrefixLock;
+pub use manager::{Check, CheckStatus, Inspection, PrefixManager, Validation};
 pub use state::{Phase, StateRecord, StateStore};
 
 #[cfg(test)]

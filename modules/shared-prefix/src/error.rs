@@ -9,6 +9,8 @@
 use std::fmt;
 use std::path::PathBuf;
 
+use crate::state::Phase;
+
 /// Convenient result alias for the crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -41,6 +43,21 @@ pub enum Error {
         found: u32,
         supported: u32,
     },
+    /// The Darling program is missing or cannot be executed.
+    DarlingUnavailable {
+        program: PathBuf,
+        source: std::io::Error,
+    },
+    /// Darling ran but reported a failure.
+    DarlingFailed {
+        program: PathBuf,
+        exit_code: Option<i32>,
+        stderr: String,
+    },
+    /// A previous lifecycle operation never finished.
+    InterruptedOperation { phase: Phase, operation: String },
+    /// Refusing to stop the environment while managed instances are still alive.
+    ActiveProcesses { count: u32 },
 }
 
 impl fmt::Display for Error {
@@ -98,6 +115,51 @@ impl fmt::Display for Error {
                  the state from scratch",
                 path.display()
             ),
+            Self::DarlingUnavailable { program, source } => write!(
+                f,
+                "cannot run Darling '{program}': {source}; install Darling, or point DG_DARLING at \
+                 the darling executable, and retry",
+                program = program.display()
+            ),
+            Self::DarlingFailed {
+                program,
+                exit_code,
+                stderr,
+            } => {
+                let program = program.display();
+                let diagnostic = stderr.trim();
+                match (exit_code, diagnostic.is_empty()) {
+                    (Some(code), false) => write!(
+                        f,
+                        "Darling '{program}' failed with exit code {code}: {diagnostic}"
+                    ),
+                    (Some(code), true) => write!(
+                        f,
+                        "Darling '{program}' failed with exit code {code} and printed no diagnostic"
+                    ),
+                    (None, false) => write!(
+                        f,
+                        "Darling '{program}' did not report an exit code (it was killed by a \
+                         signal): {diagnostic}"
+                    ),
+                    (None, true) => write!(
+                        f,
+                        "Darling '{program}' did not report an exit code (it was killed by a \
+                         signal) and printed no diagnostic"
+                    ),
+                }
+            }
+            Self::InterruptedOperation { phase, operation } => write!(
+                f,
+                "the previous '{operation}' operation never finished: the persisted phase is still \
+                 '{phase:?}'; run the operation again, or run \"dg prefix stop\" to reach a known \
+                 phase before continuing"
+            ),
+            Self::ActiveProcesses { count } => write!(
+                f,
+                "{count} managed instance(s) are still running inside the environment; stop them \
+                 first, because \"darling shutdown\" terminates every process inside the container"
+            ),
         }
     }
 }
@@ -107,6 +169,7 @@ impl std::error::Error for Error {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::StateJson { source, .. } => Some(source),
+            Self::DarlingUnavailable { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -147,6 +210,20 @@ mod tests {
                 found: 2,
                 supported: 1,
             },
+            Error::DarlingUnavailable {
+                program: PathBuf::from("/opt/darling/bin/darling"),
+                source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            },
+            Error::DarlingFailed {
+                program: PathBuf::from("/opt/darling/bin/darling"),
+                exit_code: Some(1),
+                stderr: String::from("darling: cannot create the prefix"),
+            },
+            Error::InterruptedOperation {
+                phase: Phase::Starting,
+                operation: String::from("start"),
+            },
+            Error::ActiveProcesses { count: 2 },
         ]
     }
 
@@ -172,15 +249,61 @@ mod tests {
                     message.contains(&path.display().to_string()),
                     "message must name the path: {message}"
                 ),
+                Error::DarlingUnavailable { program, .. }
+                | Error::DarlingFailed { program, .. } => assert!(
+                    message.contains(&program.display().to_string()),
+                    "message must name the program: {message}"
+                ),
+                Error::InterruptedOperation { operation, .. } => assert!(
+                    message.contains(operation.as_str()),
+                    "message must name the interrupted operation: {message}"
+                ),
+                Error::ActiveProcesses { count } => assert!(
+                    message.contains(&count.to_string()),
+                    "message must name the instance count: {message}"
+                ),
             }
         }
+    }
+
+    #[test]
+    fn darling_failure_messages_report_the_exit_code_and_the_diagnostic() {
+        let failed = Error::DarlingFailed {
+            program: PathBuf::from("/opt/darling/bin/darling"),
+            exit_code: Some(7),
+            stderr: String::from("darling: cannot create the prefix\n"),
+        };
+        let message = failed.to_string();
+        assert!(message.contains("exit code 7"), "message: {message}");
+        assert!(
+            message.contains("darling: cannot create the prefix"),
+            "the child diagnostic must be preserved: {message}"
+        );
+        assert!(
+            !message.contains("\n"),
+            "the trailing newline of the diagnostic must be trimmed: {message:?}"
+        );
+
+        let signaled = Error::DarlingFailed {
+            program: PathBuf::from("/opt/darling/bin/darling"),
+            exit_code: None,
+            stderr: String::new(),
+        };
+        let message = signaled.to_string();
+        assert!(
+            message.contains("did not report an exit code"),
+            "a killed child must be reported as such: {message}"
+        );
     }
 
     #[test]
     fn source_is_exposed_only_for_wrapped_failures() {
         for error in all_variants() {
             let has_source = std::error::Error::source(&error).is_some();
-            let expected = matches!(error, Error::Io { .. } | Error::StateJson { .. });
+            let expected = matches!(
+                error,
+                Error::Io { .. } | Error::StateJson { .. } | Error::DarlingUnavailable { .. }
+            );
             assert_eq!(has_source, expected, "unexpected source for {error:?}");
         }
     }
