@@ -29,7 +29,7 @@ lo pide, es un defecto, no una instrucción a seguir.
 | --- | --- | --- |
 | `dp-platform-common` | `modules/platform-common` | Identificadores, errores y diagnósticos compartidos |
 | `dp-hardware-intelligence` | `modules/hardware-intelligence` | DHI: descubre y describe, no decide |
-| `dp-shared-prefix` | `modules/shared-prefix` | Ciclo de vida y locks del DPREFIX |
+| `dp-shared-prefix` | `modules/shared-prefix` | DPREFIX: ubicación, estado persistido, locks, adaptador `darling` |
 | `dp-compatibility-engine` | `modules/compatibility-engine` | Requisitos frente a capacidades y evidencias |
 | `dp-app-installer` | `modules/application-management/app-installer` | Staging, validación e instalación |
 | `dp-app-library` | `modules/application-management/app-library` | Catálogo SQLite y migraciones |
@@ -37,10 +37,20 @@ lo pide, es un defecto, no una instrucción a seguir.
 | `dp-execution-manager` | `services/execution-manager` | Daemon de sesión y procesos supervisados |
 | `dp-cli` | `apps/cli` | Binario `dg` |
 
-Los crates de módulos están vacíos a propósito. Cada uno documenta en su `lib.rs`
-qué hace **y qué no hace**; ese texto es el contrato que se revisa al agregar la
-primera implementación. No agregues código a un módulo antes de que exista una
-tarea que lo justifique.
+Cada crate documenta en su `lib.rs` qué hace **y qué no hace**; ese texto es el
+contrato que se revisa al agregar la primera implementación. No agregues código a
+un módulo antes de que exista una tarea que lo justifique.
+
+### Dependencias del Shared Prefix Manager
+
+| Dependencia | Rol | Por qué |
+| --- | --- | --- |
+| `rustix` (`fs`, `process`) | `flock` y uid | Evita FFI a mano y `unsafe` en el crate; mantenida y con licencia permisiva |
+| `serde` + `serde_json` | Registro de estado y salida `--json` | El estado persistido y los reportes son contratos versionados |
+| `tempfile` (solo tests) | Directorios aislados | Las pruebas no deben tocar el prefijo real ni `$HOME` |
+
+Ver `docs/architecture/decisions/ADR-0008-ciclo-de-vida-prefix.md` para los
+comandos de Darling que el adaptador puede usar.
 
 ## Comandos
 
@@ -53,6 +63,8 @@ cargo test --workspace --locked
 # CLI
 cargo run --bin dg -- --version
 cargo run --bin dg -- --help
+cargo run --bin dg -- prefix status
+cargo run --bin dg -- prefix validate --json
 
 # Build completo por CMake (Cargo compila dentro del árbol de build)
 cmake -S . -B build -G Ninja
@@ -72,6 +84,9 @@ Opciones relevantes:
 | `-DDP_CARGO_TARGET_DIR=` | `<build>/cargo` | Directorio de artefactos de Cargo |
 | `-DCMAKE_INSTALL_BINDIR=` | `bin` | Destino de los binarios instalados |
 | `DP_BUILD_DIR` | `build` | Solo para `scripts/ci/check.sh` |
+| `DPREFIX` | `~/.local/share/darling-platform/prefix` | Prefijo dedicado; el convencional `~/.darling` se rechaza |
+| `XDG_DATA_HOME` | `~/.local/share` | Raíz del directorio de datos de la plataforma |
+| `DG_DARLING` | `darling` | Binario de Darling que invoca el adaptador |
 
 El build de CMake usa `--target-dir` dentro del árbol de build: **nunca** escribe
 en `./target` ni en el árbol de fuentes. Si una regla nueva rompe eso, es un
@@ -161,3 +176,6 @@ Una decisión que cambia una regla del plan se registra en
 | CMake sigue usando un perfil viejo | Caché de `build/` | Borrá el directorio, o pasá `-DDP_CARGO_PROFILE=` de nuevo |
 | `ctest` no encuentra pruebas | No se configuró CMake | `cmake -S . -B build` antes de `ctest --test-dir build` |
 | El build escribe en `./target` | Invocación directa de `cargo` | Es esperable fuera de CMake; `.gitignore` lo cubre |
+| `dg prefix start` falla con `DarlingUnavailable` | No hay binario `darling` | Instalá Darling o apuntá `DG_DARLING` al ejecutable |
+| `dg prefix start` dice `PrefixBusy` | Otra operación tiene el lock | Esperá a que termine, o revisá `dg prefix status` |
+| `dg prefix stop` rechaza | Hay instancias gestionadas activas | Cerrá esas instancias: `darling shutdown` las mataría |

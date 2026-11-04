@@ -5,11 +5,11 @@ macOS en Linux**, usando [Darling](https://github.com/darlinghq/darling) como
 núcleo de compatibilidad y construyendo alrededor de él la gestión, el
 diagnóstico, la integración con el escritorio y los perfiles de ejecución.
 
-> **Estado actual: esqueleto compilable.** El repositorio todavía no ejecuta ni
-> instala aplicaciones. Lo que existe hoy es el andamiaje que hace verificable
-> cada paso siguiente: workspace de Cargo con los límites de los módulos
-> declarados, build de CMake, CI, documentación de arquitectura y las primeras
-> decisiones registradas como ADR.
+> **Estado actual: andamiaje completo + Shared Prefix Manager.** El repositorio
+> todavía no instala ni ejecuta aplicaciones: falta Darling en la máquina y faltan
+> las fases 3 y 5. Lo que existe hoy es el esqueleto compilable, la arquitectura
+> documentada con sus ADR, CI verde y el ciclo de vida del DPREFIX dedicado con su
+> CLI (`dg prefix status|validate|start|stop`).
 
 **Darling Platform** es un nombre de trabajo. La decisión sobre el nombre
 definitivo y la organización de repositorios sigue abierta.
@@ -91,10 +91,10 @@ datos de una importación y de un lanzamiento, en
 
 | Ruta | Contenido |
 | --- | --- |
-| `apps/cli/` | Crate `dp-cli` y binario `dg`: versión y ayuda. Sin comandos todavía. |
+| `apps/cli/` | Crate `dp-cli` y binario `dg`: `prefix status`, `validate`, `start`, `stop`. |
 | `modules/platform-common/` | Límite del módulo de identificadores, errores y diagnósticos compartidos. |
 | `modules/hardware-intelligence/` | Límite del DHI: descubrimiento, no decisión. |
-| `modules/shared-prefix/` | Límite del ciclo de vida y los locks del DPREFIX. |
+| `modules/shared-prefix/` | Ciclo de vida del DPREFIX: ubicación, estado persistido, locks y adaptador de Darling. |
 | `modules/compatibility-engine/` | Límite del análisis de requisitos y evidencias. |
 | `modules/application-management/` | `app-installer`, `app-library` y `bundle-inspector`. |
 | `services/execution-manager/` | Límite del daemon de sesión. |
@@ -104,9 +104,9 @@ datos de una importación y de un lanzamiento, en
 | `scripts/` | `dev/env-check.sh` y `ci/check.sh`. |
 | `tests/`, `packaging/`, `integrations/`, `runtimes/` | **Aún no existen**: se crean con su primera implementación verificable. |
 
-Los crates de los módulos están deliberadamente vacíos: declaran su
-responsabilidad y su no-responsabilidad en la documentación del crate para que el
-límite sea revisable antes de que exista código. La estructura objetivo del plan
+Los crates de los módulos declaran su responsabilidad y su no-responsabilidad en
+la documentación del crate, para que el límite sea revisable antes de que exista
+código. Solo `dp-shared-prefix` tiene lógica hoy; el resto sigue vacío. La estructura objetivo del plan
 es una dirección, no una obligación de crear directorios vacíos.
 
 ## Requisitos

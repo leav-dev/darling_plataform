@@ -44,7 +44,7 @@ El reporte se versiona para que el runtime evolucione sin romper consumidores.
 
 ## Shared Prefix Manager (SPM)
 
-**Crate:** `dp-shared-prefix` · **Estado:** esqueleto
+**Crate:** `dp-shared-prefix` · **Estado:** implementado (Fase 2)
 
 Única autoridad sobre el DPREFIX dedicado y compartido
 (`~/.local/share/darling-platform/prefix/`).
@@ -68,6 +68,27 @@ pub enum PrefixState {
 
 Son estados de la plataforma, no estados internos oficiales de Darling, y no deben
 presentarse como tales.
+
+**Verificado en esta fase** (ver `ADR-0008`): Darling no tiene comando de
+inicialización —el prefijo se crea en la primera ejecución—, `darling shell
+/usr/bin/true` arranca o se conecta al contenedor, `darling shutdown` termina
+todos los procesos que corren dentro, y no hay forma documentada de consultar si
+el contenedor está vivo. Por eso el estado lo persiste la plataforma
+(`state.json`, escritura atómica) y una fase que quedó a mitad de transición se
+reporta como interrumpida.
+
+Implementación actual:
+
+| Operación | Comando | Efecto |
+| --- | --- | --- |
+| Consulta | `dg prefix status [--json]` | Reporta ubicación, fase, interrupción, lock ocupado y advertencias; no escribe nada |
+| Validación | `dg prefix validate [--json]` | Nueve checks: existencia, tipo, symlink, propiedad, escritura, longitud, ubicación dedicada, datos fuera del prefijo y registro de estado |
+| Arranque | `dg prefix start` | `darling shell /usr/bin/true` con `DPREFIX` exportado; persiste `Initializing`/`Starting` antes de invocar |
+| Apagado | `dg prefix stop [--active-instances N]` | Se niega con instancias activas; si no, `darling shutdown` |
+
+Locks: lecturas concurrentes con lock compartido, operaciones de cambio con lock
+exclusivo no bloqueante (`PrefixBusy` en lugar de esperar). El lock vive **fuera**
+del prefijo, para que no lo oculte el overlay.
 
 ---
 
@@ -190,13 +211,14 @@ no copias de Darling.
 
 ## CLI (`dg`)
 
-**Crate:** `dp-cli` · **Estado:** esqueleto funcional
+**Crate:** `dp-cli` · **Estado:** `prefix` implementado
 
-Implementa hoy `--version`, `--help` y el rechazo explícito de entrada desconocida
-(código de salida 2). Cada comando futuro es un adaptador delgado: la lógica vive
-en el módulo que el comando invoca.
+Implementa `--version`, `--help`, el rechazo explícito de entrada desconocida
+(código de salida 2) y la familia `dg prefix`. Cada comando es un adaptador
+delgado: la lógica vive en el módulo que el comando invoca, y la salida JSON se
+deriva de los tipos del módulo, no de plantillas paralelas.
 
-Primer comando previsto: `dg hardware scan`.
+Próximo comando previsto: `dg hardware scan` (Fase 1 del plan).
 
 ---
 

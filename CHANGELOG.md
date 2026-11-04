@@ -9,6 +9,14 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- Shared Prefix Manager: ciclo de vida del DPREFIX dedicado con estados
+  persistidos, locks de lectura/escritura, validación por checks y recuperación de
+  operaciones interrumpidas (`modules/shared-prefix`).
+- Adaptador de Darling con los comandos verificados (`darling shell`,
+  `darling shutdown`), que exporta `DPREFIX` al proceso hijo.
+- CLI `dg prefix status|validate|start|stop`, con salida texto y `--json`, y
+  rechazo de `stop` mientras haya instancias gestionadas activas.
+- ADR-0008: contrato verificado del ciclo de vida del DPREFIX.
 - Esqueleto del monorepo: workspace de Cargo con los ocho módulos del plan de
   arquitectura, cada uno con su responsabilidad y no-responsabilidad declaradas.
 - CLI `dg` con `--version` y `--help`, y rechazo explícito de entrada
