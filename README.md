@@ -53,7 +53,7 @@ Los detalles y las consecuencias de cada principio están en
 ```mermaid
 flowchart TB
     UI["Application Center"]
-    CLI["CLI / dg"]
+    CLI["CLI / dp"]
     IPC["API local tipada · D-Bus de sesión"]
     DEM["Execution Manager<br/>daemon por sesión"]
     INSTALL["App Installer"]
@@ -91,7 +91,7 @@ datos de una importación y de un lanzamiento, en
 
 | Ruta | Contenido |
 | --- | --- |
-| `apps/cli/` | Crate `dp-cli` y binario `dg`: `prefix status`, `validate`, `start`, `stop`. |
+| `apps/cli/` | Crate `dp-cli` y binario `dp`: `prefix status`, `validate`, `start`, `stop`. |
 | `modules/platform-common/` | Límite del módulo de identificadores, errores y diagnósticos compartidos. |
 | `modules/hardware-intelligence/` | Límite del DHI: descubrimiento, no decisión. |
 | `modules/shared-prefix/` | Ciclo de vida del DPREFIX: ubicación, estado persistido, locks y adaptador de Darling. |
