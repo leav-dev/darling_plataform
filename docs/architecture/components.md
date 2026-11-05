@@ -210,7 +210,7 @@ no copias de Darling.
 
 ---
 
-## CLI (`dg`)
+## CLI (`dp`)
 
 **Crate:** `dp-cli` · **Estado:** `prefix` implementado
 

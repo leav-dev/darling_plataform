@@ -27,7 +27,7 @@ De ahí salen las dos separaciones que ordenan todo el diseño:
 ```mermaid
 flowchart TB
     UI["Application Center<br/>biblioteca y experiencia"]
-    CLI["CLI · dg"]
+    CLI["CLI · dp"]
     IPC["API local tipada<br/>D-Bus de sesión"]
     DEM["Execution Manager<br/>daemon por sesión"]
     INSTALL["App Installer"]
@@ -62,7 +62,7 @@ flowchart TB
 | Capa | Responsabilidad | No debe hacer |
 | --- | --- | --- |
 | Application Center | Mostrar aplicaciones, estados, acciones y diagnósticos | Ejecutar binarios ni administrar el DPREFIX |
-| CLI (`dg`) | Administración, diagnóstico y automatización | Duplicar lógica de negocio |
+| CLI (`dp`) | Administración, diagnóstico y automatización | Duplicar lógica de negocio |
 | IPC / API | Contratos tipados entre frontend, CLI y daemon | Exponer ejecución arbitraria de shell |
 | Execution Manager | Coordinar lanzamientos, procesos y ciclo de vida | Reimplementar servicios internos de Darling |
 | App Installer | Importar, inspeccionar y preparar instalaciones | Declarar compatibilidad sin análisis |
@@ -95,7 +95,7 @@ Las fronteras no son organizativas: son verificables.
 ## Estado actual frente al objetivo
 
 El repositorio contiene hoy el andamiaje: workspace de Cargo con un crate por
-módulo, binario `dg`, build de CMake, CI y documentación. Ningún módulo tiene
+módulo, binario `dp`, build de CMake, CI y documentación. Ningún módulo tiene
 lógica.
 
 ```text
