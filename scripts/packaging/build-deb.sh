@@ -134,7 +134,7 @@ readonly arch="$(dpkg --print-architecture)"
 readonly staging="${out_dir}/deb-root-${version}"
 readonly cargo_target_dir="${out_dir}/build"
 readonly deb="${out_dir}/${package_name}_${version}_${arch}.deb"
-readonly cargo_binary="${cargo_target_dir}/release/dg"
+readonly cargo_binary="${cargo_target_dir}/release/dp"
 
 # Timestamps inside the archive come from SOURCE_DATE_EPOCH so two builds of the
 # same commit produce byte-identical packages. The last commit time is the
@@ -166,7 +166,7 @@ install -d -m 0755 \
 
 # Payload. There is no man page and no conffile: the package ships exactly the
 # binary, its copyright and its changelog.
-install -m 0755 "$cargo_binary" "$staging/usr/bin/dg"
+install -m 0755 "$cargo_binary" "$staging/usr/bin/dp"
 install -m 0644 "$repo_root/packaging/deb/copyright" "$staging/usr/share/doc/${package_name}/copyright"
 gzip --best --no-name -c "$repo_root/CHANGELOG.md" >"$staging/usr/share/doc/${package_name}/changelog.gz"
 chmod 0644 "$staging/usr/share/doc/${package_name}/changelog.gz"
