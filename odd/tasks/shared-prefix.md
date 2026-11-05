@@ -58,7 +58,7 @@ Hechos comprobados en la documentación y el código de Darling, no supuestos:
 Release estable elegida: **v0.1.20260608** (publicada 2026-06-09, commit
 `e947f0d5a3c6bba27e3631d9bf0da2a9840e6894`), con paquetes Debian verificables por
 hash. El pin vive en `deps/darling.toml`, se embebe en el binario y se reporta en
-`dg prefix status`.
+`dp prefix status`.
 
 Hecho adicional verificado en `src/startup/darling.c`: el binario `darling`
 **exige setuid root** (`geteuid() != 0` aborta con `missingSetuidRoot`). La
@@ -83,7 +83,7 @@ plataforma no necesita root, pero invoca un binario setuid: queda documentado en
 | T2 | S5 | `PrefixLocation`, errores tipados y registro de estado con escritura atómica | `194b880` |
 | T3 | S2 | Locks de lectura/escritura sobre archivo de lock + pruebas de concurrencia | `56a86ef` |
 | T4 | S2, S3 | Adaptador `Darling` + `PrefixManager` (`inspect`, `validate`, `start`, `stop`) | `cf17087` |
-| T5 | S2 | CLI `dg prefix status\|validate\|start\|stop` con salida texto y `--json` | `45db3cb` |
+| T5 | S2 | CLI `dp prefix status\|validate\|start\|stop` con salida texto y `--json` | `45db3cb` |
 | T6 | S2 | Documentación: recuperación, dependencias, switches de entorno y mapa del repo | `0613e0c` |
 | T8 | S6 | Pin de Darling: archivo de dependencia, constante embebida, reporte en `status` y script de instalación verificado | `7715eac`, `6cd859f`, `c26d2ec`, `f073140` |
 
@@ -102,7 +102,7 @@ el adaptador real queda aislado con sus comandos verificados por fuente (S3), a 
 espera de la prueba local que exige la Fase 0.
 
 Consecuencia explícita: este corte **no** permite todavía lanzar una app de macOS.
-Desbloquea `dg prefix status|validate|start|stop` y la base sobre la que se apoyan
+Desbloquea `dp prefix status|validate|start|stop` y la base sobre la que se apoyan
 las fases 3 y 5.
 
 ### L3 — Decisiones de diseño derivadas de S3
@@ -153,7 +153,7 @@ CTest) verde, más prueba de extremo a extremo con un `darling` falso:
 - **uid del proceso** vía `rustix::process::getuid` (se habilitó el feature
   `process`), en lugar de inferirlo del dueño del lock file.
 - **Sin `init`.** `start` es la única inicialización, porque Darling crea el
-  prefijo on-demand (F2). No se agregó un comando `dg prefix init` que sugiera una
+  prefijo on-demand (F2). No se agregó un comando `dp prefix init` que sugiera una
   operación que Darling no tiene.
 
 ### L6 — Pendiente fuera de este corte
@@ -187,8 +187,8 @@ CTest) verde, más prueba de extremo a extremo con un `darling` falso:
 | --- | --- |
 | `cargo test --workspace --locked` | 92 pruebas, 0 fallos (6 nuevas de pin) |
 | `scripts/ci/check.sh` | verde completo |
-| `dg prefix status` | `pin: v0.1.20260608 (commit e947f0d5a3c6)` |
-| `dg prefix status --json` | `darling_pin.version == "v0.1.20260608"` |
+| `dp prefix status` | `pin: v0.1.20260608 (commit e947f0d5a3c6)` |
+| `dp prefix status --json` | `darling_pin.version == "v0.1.20260608"` |
 | `install-darling-pin.sh --dry-run` | URL del tag pineado, hash y destino correctos |
 | `install-darling-pin.sh --help` / argumento inválido | texto de uso / exit 2 |
 | Hashes de assets | verificados contra la API de GitHub (debs y fuentes) |

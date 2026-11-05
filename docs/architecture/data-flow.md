@@ -143,7 +143,7 @@ explícito y diagnóstico cuando falla.
 ```
 
 Configuración y preferencias pueden vivir en `~/.config/darling-platform/` según
-XDG Base Directory Specification.
+Xdp Base Directory Specification.
 
 Reglas:
 

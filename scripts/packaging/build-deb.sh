@@ -153,7 +153,7 @@ fi
 step "cargo build --release (target dir: $cargo_target_dir)"
 (
     cd "$repo_root"
-    cargo build --release --locked --package dp-cli --bin dg --target-dir "$cargo_target_dir"
+    cargo build --release --locked --package dp-cli --bin dp --target-dir "$cargo_target_dir"
 )
 [ -x "$cargo_binary" ] || fail "cargo finished but $cargo_binary is not executable"
 

@@ -29,7 +29,7 @@ Tres hechos verificados acotan las opciones:
 2. **Un solo archivo de verdad:** `deps/darling.toml` con versión, commit, fecha,
    URL del tag, assets con bytes y sha256, y el registro de parches propios.
 3. **El pin se embebe en el binario** (`include_str!` en
-   `modules/shared-prefix/src/pin.rs`) y se reporta en `dg prefix status` y en su
+   `modules/shared-prefix/src/pin.rs`) y se reporta en `dp prefix status` y en su
    salida `--json`. Una prueba fija los valores: subir la versión es un cambio de
    código revisable, no una deriva silenciosa.
 4. **La instalación se verifica antes, no se adivina después.** El script
@@ -72,4 +72,4 @@ Tres hechos verificados acotan las opciones:
 - Revisar el pin en cada release de Darling; documentar breaking changes antes de
   subir.
 - Si upstream agrega un comando de versión, sumar detección y comparar con el pin
-  en `dg prefix status`.
+  en `dp prefix status`.

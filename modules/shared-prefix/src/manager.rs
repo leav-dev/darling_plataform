@@ -86,7 +86,7 @@ impl Validation {
     /// Returns `true` when no check failed.
     ///
     /// Warnings and inapplicable checks do not make a prefix invalid: an absent
-    /// prefix is not an error, because `dg prefix start` creates it.
+    /// prefix is not an error, because `dp prefix start` creates it.
     pub fn passed(&self) -> bool {
         !self
             .checks
@@ -152,7 +152,7 @@ impl PrefixManager {
                 warnings.push(format!(
                     "the previous '{operation}' operation never finished (InterruptedOperation \
                      risk): the persisted phase is still '{}'; run the operation again, or run \
-                     \"dg prefix stop\" to reach a known phase",
+                     \"dp prefix stop\" to reach a known phase",
                     phase_name(record.phase)
                 ));
                 (Phase::Error, Some(operation))
@@ -176,7 +176,7 @@ impl PrefixManager {
         {
             warnings.push(format!(
                 "the persisted phase is 'running' but the prefix directory '{}' does not exist; \
-                 Darling cannot be asked whether its container is alive, so run \"dg prefix \
+                 Darling cannot be asked whether its container is alive, so run \"dp prefix \
                  start\" to re-establish it",
                 prefix.display()
             ));
@@ -431,7 +431,7 @@ fn prefix_parent_check(prefix: &Path) -> Check {
                 name: NAME,
                 status: CheckStatus::Fail,
                 detail: format!(
-                    "'{}' exists but the current user cannot write to it, so `dg prefix start` \
+                    "'{}' exists but the current user cannot write to it, so `dp prefix start` \
                      could not create the prefix",
                     parent.display()
                 ),
@@ -451,7 +451,7 @@ fn prefix_parent_check(prefix: &Path) -> Check {
         (
             CheckStatus::Warn,
             format!(
-                "'{}' does not exist yet; `dg prefix start` creates it (Darling only creates the \
+                "'{}' does not exist yet; `dp prefix start` creates it (Darling only creates the \
                  prefix itself)",
                 parent.display()
             ),
@@ -475,7 +475,7 @@ fn prefix_exists_check(prefix: &Path) -> Check {
         (
             CheckStatus::Warn,
             format!(
-                "'{}' is not initialized yet; `dg prefix start` creates it through Darling",
+                "'{}' is not initialized yet; `dp prefix start` creates it through Darling",
                 prefix.display()
             ),
         )
@@ -1366,7 +1366,7 @@ mod tests {
         assert!(
             exists
                 .detail
-                .contains("not initialized yet; `dg prefix start` creates it through Darling"),
+                .contains("not initialized yet; `dp prefix start` creates it through Darling"),
             "unexpected detail: {}",
             exists.detail
         );

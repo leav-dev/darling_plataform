@@ -152,7 +152,7 @@ impl fmt::Display for Error {
             Self::InterruptedOperation { phase, operation } => write!(
                 f,
                 "the previous '{operation}' operation never finished: the persisted phase is still \
-                 '{phase:?}'; run the operation again, or run \"dg prefix stop\" to reach a known \
+                 '{phase:?}'; run the operation again, or run \"dp prefix stop\" to reach a known \
                  phase before continuing"
             ),
             Self::ActiveProcesses { count } => write!(

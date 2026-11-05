@@ -213,13 +213,13 @@ elevated apt-get install -y "$package"
 # --- 5. verification --------------------------------------------------------
 step "5/5 verification"
 if [ "$dry_run" -eq 1 ]; then
-    note "would verify: dg --version, dg prefix validate, darling shell uname"
+    note "would verify: dp --version, dp prefix validate, darling shell uname"
 else
-    command -v dg >/dev/null 2>&1 || fail "dg is not on PATH after installation; check the package payload"
-    printf '    dg --version ....... '
-    dg --version
-    printf '    dg prefix validate . '
-    dg prefix validate >/dev/null && printf 'ok\n'
+    command -v dp >/dev/null 2>&1 || fail "dp is not on PATH after installation; check the package payload"
+    printf '    dp --version ....... '
+    dp --version
+    printf '    dp prefix validate . '
+    dp prefix validate >/dev/null && printf 'ok\n'
 
     if [ "$install_darling" -eq 1 ]; then
         printf '    darling shell ...... '
@@ -239,8 +239,8 @@ step "done"
 cat <<EOF
     darling-platform is installed. Next:
 
-      dg prefix start        # create the shared prefix and start the environment
-      dg prefix status       # phase, lock and warnings
+      dp prefix start        # create the shared prefix and start the environment
+      dp prefix status       # phase, lock and warnings
 
     Uninstall the tool (the prefix and your applications stay untouched):
 

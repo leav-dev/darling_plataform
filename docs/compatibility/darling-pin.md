@@ -17,7 +17,7 @@ haga falta subir de versión. La decisión está en
 | Parches propios | ninguno |
 
 La fuente de verdad es [`deps/darling.toml`](../../deps/darling.toml). Se embebe en
-el binario: `dg prefix status` reporta la versión con la que fue construido.
+el binario: `dp prefix status` reporta la versión con la que fue construido.
 
 ## Instalación verificada
 
@@ -52,7 +52,7 @@ DPREFIX=/tmp/darling-check/dp darling shell uname    # debe imprimir: Darwin
 El `mkdir -p` no es opcional si el prefijo va dentro de una ruta que todavía no
 existe: Darling crea **el prefijo**, no sus directorios padre, y falla con
 `Cannot create <ruta>: No such file or directory`. El Shared Prefix Manager lo
-resuelve por vos: `dg prefix start` crea solo el padre y deja que Darling cree el
+resuelve por vos: `dp prefix start` crea solo el padre y deja que Darling cree el
 prefijo.
 
 > **`darling` es setuid root.** El binario aborta si no corre con privilegios
@@ -66,7 +66,7 @@ prefijo.
   inventar una heurística (fecha del binario, presencia de un archivo) daría falsos
   positivos. El pin se verifica al instalar, que es donde el dato existe.
 - **No impide instalar otro Darling.** Si hay una versión distinta en el sistema,
-  `dg prefix start` la usará. Los reportes de compatibilidad registran la versión
+  `dp prefix start` la usará. Los reportes de compatibilidad registran la versión
   esperada; agregar la detectada requiere que upstream la exponga.
 - **No garantiza compatibilidad de aplicaciones.** "Estable" es una propiedad de la
   release de Darling, no de una app concreta.
@@ -97,4 +97,4 @@ en la Fase 0 con evidencia reproducible.
 | `DarlingUnavailable` al hacer `start` | No hay binario `darling` | Instalá el pin o apuntá `DG_DARLING` |
 | El hash no coincide al descargar | Descarga incompleta o asset reemplazado | Borrá el archivo del caché y reintentá; si persiste, revisá el release |
 | `missingSetuidRoot` | El binario perdió el bit setuid | Reinstalá los paquetes del pin |
-| `dg prefix status` muestra otro Darling | Instalación manual ajena al pin | Verificá con `dpkg -l` y reinstalá el pin |
+| `dp prefix status` muestra otro Darling | Instalación manual ajena al pin | Verificá con `dpkg -l` y reinstalá el pin |

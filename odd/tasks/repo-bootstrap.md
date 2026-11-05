@@ -113,7 +113,7 @@ Ejecutado sobre `feat/repo-bootstrap` con árbol limpio:
 | Pruebas | `cargo test --workspace --locked` | 16 pruebas, 0 fallos |
 | Build CMake | `cmake -S . -B build -G Ninja && cmake --build build` | OK |
 | CTest | `ctest --test-dir build --output-on-failure` | 1/1 OK |
-| Instalación | `cmake --install build --prefix /tmp/dp-install` | `bin/dg` instalado; `dg --version` → `dg 0.1.0` |
+| Instalación | `cmake --install build --prefix /tmp/dp-install` | `bin/dg` instalado; `dp --version` → `dp 0.1.0` |
 | Perfil release | `-DDP_CARGO_PROFILE=release` | OK |
 | Árbol de fuentes intacto | build de CMake sin `./target` previo | no crea `target/` en el checkout |
 | Compuertas locales | `scripts/ci/check.sh` | todas verdes |

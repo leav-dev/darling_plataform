@@ -8,7 +8,7 @@ Maintainer: Darling Platform contributors
 Depends: libc6 (>= 2.39)
 Description: import, manage and run macOS applications on Linux
  Darling Platform runs macOS applications on Linux on top of a pinned Darling
- release. This package provides the dg command, which inspects the host, manages
+ release. This package provides the dp command, which inspects the host, manages
  the shared prefix where the applications live, and reports what is missing
  before anything is installed.
  .

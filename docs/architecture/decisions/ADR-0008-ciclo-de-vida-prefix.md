@@ -30,7 +30,7 @@ ciclo de vida tipo servicio:
 La plataforma modela el ciclo de vida **solo con operaciones que Darling tiene**, y
 nombra la diferencia en lugar de esconderla:
 
-1. **No hay `init`.** `dg prefix start` ejecuta `darling shell /usr/bin/true` con
+1. **No hay `init`.** `dp prefix start` ejecuta `darling shell /usr/bin/true` con
    `DPREFIX` exportado al proceso hijo. Ese único paso crea el prefijo si no existe
    (F2) y asegura el contenedor (F3).
 2. **`start` no es idempotente por contrato de Darling**, es idempotente por
@@ -85,7 +85,7 @@ nombra la diferencia en lugar de esconderla:
 
 ## Seguimiento
 
-- Ejecutar `dg prefix start/stop` contra un Darling real y registrar versión o
+- Ejecutar `dp prefix start/stop` contra un Darling real y registrar versión o
   commit, según el criterio de salida de la Fase 0.
 - Revisar el adaptador en cada actualización de la versión fijada de Darling.
 - Si upstream agrega un comando de estado, reemplazar la fase persistida por la

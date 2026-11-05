@@ -19,15 +19,15 @@ use dp_shared_prefix::{
     PrefixManager, SystemDarling, Validation,
 };
 
-/// Text shown by `dg --help` and by any call that needs the command list.
+/// Text shown by `dp --help` and by any call that needs the command list.
 pub const USAGE: &str = "\
-usage: dg <command> [options]
+usage: dp <command> [options]
 
 Commands:
-  dg prefix status    Report the shared DPREFIX: location, phase and warnings
-  dg prefix validate  Validate the shared DPREFIX and print one line per check
-  dg prefix start     Ensure the environment is up, creating the prefix on first use
-  dg prefix stop      Shut the environment down; refuses while managed instances run
+  dp prefix status    Report the shared DPREFIX: location, phase and warnings
+  dp prefix validate  Validate the shared DPREFIX and print one line per check
+  dp prefix start     Ensure the environment is up, creating the prefix on first use
+  dp prefix stop      Shut the environment down; refuses while managed instances run
 
 Options:
       --json                      Print the command outcome as JSON (status, validate)
@@ -36,9 +36,9 @@ Options:
   -V, --version                   Print version information
 ";
 
-/// Text shown when `dg prefix` is called without a usable subcommand.
+/// Text shown when `dp prefix` is called without a usable subcommand.
 const PREFIX_USAGE: &str = "\
-usage: dg prefix <subcommand> [options]
+usage: dp prefix <subcommand> [options]
 
 Subcommands:
   status    Report the shared DPREFIX: location, phase and warnings
@@ -136,9 +136,9 @@ impl Darling for SharedDarling {
     }
 }
 
-/// Version line reported by `dg --version`.
+/// Version line reported by `dp --version`.
 pub fn version_line() -> String {
-    format!("dg {}", env!("CARGO_PKG_VERSION"))
+    format!("dp {}", env!("CARGO_PKG_VERSION"))
 }
 
 /// Resolve the arguments that follow the program name into a [`Response`].
@@ -208,7 +208,7 @@ where
     }
 }
 
-/// Dispatches the `dg prefix` subcommands.
+/// Dispatches the `dp prefix` subcommands.
 fn execute_prefix(
     args: &[String],
     json: bool,
@@ -216,23 +216,23 @@ fn execute_prefix(
     env: &CliEnv,
 ) -> Response {
     let Some(subcommand) = args.first().map(String::as_str) else {
-        return Response::usage_error_with("a `dg prefix` subcommand is required", PREFIX_USAGE);
+        return Response::usage_error_with("a `dp prefix` subcommand is required", PREFIX_USAGE);
     };
 
     if let Some(extra) = args.get(1) {
         return Response::usage_error_with(
-            format!("unexpected argument `{extra}` for `dg prefix {subcommand}`"),
+            format!("unexpected argument `{extra}` for `dp prefix {subcommand}`"),
             PREFIX_USAGE,
         );
     }
 
     match subcommand {
         "status" | "validate" if active_instances.is_some() => Response::usage_error_with(
-            format!("`--active-instances` does not apply to `dg prefix {subcommand}`"),
+            format!("`--active-instances` does not apply to `dp prefix {subcommand}`"),
             PREFIX_USAGE,
         ),
         "start" | "stop" if json => Response::usage_error_with(
-            format!("`--json` does not apply to `dg prefix {subcommand}` yet"),
+            format!("`--json` does not apply to `dp prefix {subcommand}` yet"),
             PREFIX_USAGE,
         ),
         "status" => with_manager(env, |manager| status(manager, json)),
@@ -240,7 +240,7 @@ fn execute_prefix(
         "start" => with_manager(env, start),
         "stop" => with_manager(env, |manager| stop(manager, active_instances.unwrap_or(0))),
         other => Response::usage_error_with(
-            format!("unknown `dg prefix` subcommand `{other}`"),
+            format!("unknown `dp prefix` subcommand `{other}`"),
             PREFIX_USAGE,
         ),
     }
@@ -278,7 +278,7 @@ fn with_manager(env: &CliEnv, command: impl FnOnce(&PrefixManager) -> Response) 
     }
 }
 
-/// Renders `dg prefix status`.
+/// Renders `dp prefix status`.
 fn status(manager: &PrefixManager, json: bool) -> Response {
     let inspection = match manager.inspect() {
         Ok(inspection) => inspection,
@@ -329,7 +329,7 @@ fn render_status(inspection: &Inspection) -> String {
     joined_lines(lines)
 }
 
-/// Renders `dg prefix validate`.
+/// Renders `dp prefix validate`.
 ///
 /// Exit code 1 when a check failed, so the command can guard a script; a warning
 /// never fails the validation, because an absent prefix is created on demand.
@@ -457,7 +457,7 @@ mod tests {
     }
 
     /// An isolated environment: `<root>/prefix` as `DPREFIX` and `<root>/data` as
-    /// the XDG data home root, so nothing touches the developer's real prefix.
+    /// the Xdp data home root, so nothing touches the developer's real prefix.
     fn env_at(root: &Path) -> CliEnv {
         CliEnv {
             prefix: PrefixEnv {
@@ -540,7 +540,7 @@ mod tests {
         assert_eq!(response.code, 0);
         assert_eq!(
             response.stdout,
-            format!("dg {}\n", env!("CARGO_PKG_VERSION"))
+            format!("dp {}\n", env!("CARGO_PKG_VERSION"))
         );
         assert_eq!(response.stderr, "");
     }
@@ -557,7 +557,7 @@ mod tests {
         let response = execute(["--help"], &env);
 
         assert_eq!(response.code, 0);
-        assert!(response.stdout.starts_with("usage: dg <command>"));
+        assert!(response.stdout.starts_with("usage: dp <command>"));
         assert_eq!(response.stderr, "");
     }
 
@@ -575,7 +575,7 @@ mod tests {
         assert_eq!(response.code, 2);
         assert_eq!(response.stdout, "");
         assert!(response.stderr.contains("unknown command `frobnicate`"));
-        assert!(response.stderr.contains("usage: dg <command>"));
+        assert!(response.stderr.contains("usage: dp <command>"));
     }
 
     #[test]
@@ -623,8 +623,8 @@ mod tests {
         let text = response.stdout.as_str();
         for subcommand in ["status", "validate", "start", "stop"] {
             assert!(
-                text.contains(&format!("dg prefix {subcommand}")),
-                "`dg prefix {subcommand}` must be listed: {text}"
+                text.contains(&format!("dp prefix {subcommand}")),
+                "`dp prefix {subcommand}` must be listed: {text}"
             );
         }
         assert!(
@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(missing.code, 2);
         assert_eq!(missing.stdout, "");
         assert!(
-            missing.stderr.contains("usage: dg prefix"),
+            missing.stderr.contains("usage: dp prefix"),
             "unexpected stderr: {}",
             missing.stderr
         );

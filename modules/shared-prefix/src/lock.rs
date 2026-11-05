@@ -61,7 +61,7 @@ impl PrefixLock {
     ///
     /// Unlike [`PrefixLock::try_exclusive`], this never creates the lock file or
     /// its parents: an absent file means no operation is running. A read-only
-    /// command such as `dg prefix status` therefore leaves no trace on disk.
+    /// command such as `dp prefix status` therefore leaves no trace on disk.
     pub fn probe_busy(path: &Path) -> Result<bool> {
         let file = match OpenOptions::new().read(true).write(true).open(path) {
             Ok(file) => file,

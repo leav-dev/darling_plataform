@@ -9,9 +9,9 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Fixed
 
-- `dg prefix start` crea el directorio padre del prefijo antes de invocar Darling,
+- `dp prefix start` crea el directorio padre del prefijo antes de invocar Darling,
   que solo crea el prefijo y fallaba con `No such file or directory` cuando la ruta
-  contenedora no existía. `dg prefix validate` reporta ese caso con el check
+  contenedora no existía. `dp prefix validate` reporta ese caso con el check
   `prefix_parent`.
 - El instalador de Darling descubre los paquetes recorriendo el árbol extraído (el
   release los pone en un subdirectorio fechado) e instala con `apt-get` en lugar de
@@ -27,7 +27,7 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 - Pruebas offline del paquete y del repositorio, integradas a CI.
 - `ADR-0010`: instalador entregado como paquete `.deb` y contrato de privilegios.
 - Pin de Darling `v0.1.20260608` (commit `e947f0d5…`) en `deps/darling.toml`,
-  embebido en el binario y reportado por `dg prefix status`; script de instalación
+  embebido en el binario y reportado por `dp prefix status`; script de instalación
   que verifica el sha256 del asset antes de instalar.
 - ADR-0009: política de pin de Darling y verificación de instalación.
 - Shared Prefix Manager: ciclo de vida del DPREFIX dedicado con estados
@@ -35,7 +35,7 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
   operaciones interrumpidas (`modules/shared-prefix`).
 - Adaptador de Darling con los comandos verificados (`darling shell`,
   `darling shutdown`), que exporta `DPREFIX` al proceso hijo.
-- CLI `dg prefix status|validate|start|stop`, con salida texto y `--json`, y
+- CLI `dp prefix status|validate|start|stop`, con salida texto y `--json`, y
   rechazo de `stop` mientras haya instancias gestionadas activas.
 - ADR-0008: contrato verificado del ciclo de vida del DPREFIX.
 - Esqueleto del monorepo: workspace de Cargo con los ocho módulos del plan de

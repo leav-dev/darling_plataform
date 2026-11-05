@@ -61,10 +61,10 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 
 # CLI
-cargo run --bin dg -- --version
-cargo run --bin dg -- --help
-cargo run --bin dg -- prefix status
-cargo run --bin dg -- prefix validate --json
+cargo run --bin dp -- --version
+cargo run --bin dp -- --help
+cargo run --bin dp -- prefix status
+cargo run --bin dp -- prefix validate --json
 
 # Build completo por CMake (Cargo compila dentro del árbol de build)
 cmake -S . -B build -G Ninja
@@ -169,7 +169,7 @@ No agregues un crate por archivo ni una abstracción sin consumidor real.
 con el motivo en el cuerpo cuando no sea obvio:
 
 ```text
-build(cmake): install the dg binary into the prefix
+build(cmake): install the dp binary into the prefix
 
 Explain why the change exists, not what the diff already shows.
 ```
@@ -194,6 +194,6 @@ Una decisión que cambia una regla del plan se registra en
 | CMake sigue usando un perfil viejo | Caché de `build/` | Borrá el directorio, o pasá `-DDP_CARGO_PROFILE=` de nuevo |
 | `ctest` no encuentra pruebas | No se configuró CMake | `cmake -S . -B build` antes de `ctest --test-dir build` |
 | El build escribe en `./target` | Invocación directa de `cargo` | Es esperable fuera de CMake; `.gitignore` lo cubre |
-| `dg prefix start` falla con `DarlingUnavailable` | No hay binario `darling` | Instalá Darling o apuntá `DG_DARLING` al ejecutable |
-| `dg prefix start` dice `PrefixBusy` | Otra operación tiene el lock | Esperá a que termine, o revisá `dg prefix status` |
-| `dg prefix stop` rechaza | Hay instancias gestionadas activas | Cerrá esas instancias: `darling shutdown` las mataría |
+| `dp prefix start` falla con `DarlingUnavailable` | No hay binario `darling` | Instalá Darling o apuntá `DG_DARLING` al ejecutable |
+| `dp prefix start` dice `PrefixBusy` | Otra operación tiene el lock | Esperá a que termine, o revisá `dp prefix status` |
+| `dp prefix stop` rechaza | Hay instancias gestionadas activas | Cerrá esas instancias: `darling shutdown` las mataría |

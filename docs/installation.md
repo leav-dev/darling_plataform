@@ -33,7 +33,7 @@ Qué hace, en orden:
 | 2/5 privileged | Explica qué necesita root y pide la contraseña una vez (`sudo -v`) | Solo la credencial |
 | 3/5 Darling | Descarga el release pineado, verifica el sha256 e instala con `dpkg -i` | Sí (`sudo`) |
 | 4/5 darling-platform | Construye el `.deb` del checkout e instala con `apt-get install` | Solo el `apt-get` |
-| 5/5 verificación | `dg --version`, `dg prefix validate`, `darling shell uname` → `Darwin` | No |
+| 5/5 verificación | `dp --version`, `dp prefix validate`, `darling shell uname` → `Darwin` | No |
 
 El script **no corre entero como root**: lo invoca tu usuario, eleva únicamente los
 dos pasos que lo necesitan y no deja ninguna shell ni proceso privilegiado. Si lo
@@ -57,15 +57,15 @@ invocás como root, se niega y explica por qué.
 | `dg` | `/usr/bin/dg`, dentro del paquete `darling-platform` |
 | Datos de la plataforma | `~/.local/share/darling-platform/` (estado, lock, prefijo) |
 
-El DPREFIX dedicado se crea en el primer `dg prefix start`, no durante la
+El DPREFIX dedicado se crea en el primer `dp prefix start`, no durante la
 instalación.
 
 ## Verificar
 
 ```bash
-dg --version
-dg prefix status
-dg prefix validate
+dp --version
+dp prefix status
+dp prefix validate
 DPREFIX=/tmp/darling-check/dp darling shell uname    # debe imprimir: Darwin
 ```
 
@@ -129,6 +129,6 @@ y el hosting remoto llegan con la Fase 8.
 | `error: run this as your normal user, not as root` | Se ejecutó con `sudo` | Corré `scripts/install.sh` sin `sudo` |
 | `missing tools: …` | Falta `cargo`, `unzip` o similar | Instalá lo que indica el mensaje y reintentá |
 | `sudo was refused` | Cancelaste la contraseña | Nada se instaló; reintentá cuando quieras |
-| `dg is not on PATH` | `/usr/bin` fuera del PATH | Revisá el PATH o usá `/usr/bin/dg` |
+| `dp is not on PATH` | `/usr/bin` fuera del PATH | Revisá el PATH o usá `/usr/bin/dg` |
 | `darling shell uname` no dice `Darwin` | Darling instalado pero sin funcionar | Ver [`compatibility/darling-pin.md`](compatibility/darling-pin.md) |
-| `Cannot create /ruta/dp: No such file or directory` | El **directorio padre** del prefijo no existe: Darling hace `mkdir` del prefijo, no de su ruta | `mkdir -p /ruta` antes de `darling`; `dg prefix start` ya lo crea solo |
+| `Cannot create /ruta/dp: No such file or directory` | El **directorio padre** del prefijo no existe: Darling hace `mkdir` del prefijo, no de su ruta | `mkdir -p /ruta` antes de `darling`; `dp prefix start` ya lo crea solo |
