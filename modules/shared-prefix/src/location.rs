@@ -126,8 +126,8 @@ impl PrefixLocation {
 fn resolve_data_dir(env: &PrefixEnv) -> Result<PathBuf> {
     if let Some(xdg) = env.xdg_data_home.as_deref().filter(|raw| !raw.is_empty()) {
         let xdp = Path::new(xdg);
-        if xdg.is_absolute() {
-            return Ok(normalize(xdg).join(PLATFORM_DIR));
+        if xdp.is_absolute() {
+            return Ok(normalize(xdp).join(PLATFORM_DIR));
         }
     }
 
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn without_dprefix_uses_home_when_xdg_is_unusable() {
         for xdp in [None, Some("relative/xdg"), Some("")] {
-            let location = PrefixLocation::resolve(&env(None, xdg, Some("/home/dev")))
+            let location = PrefixLocation::resolve(&env(None, xdp, Some("/home/dev")))
                 .expect("HOME must be enough to resolve");
             assert_eq!(
                 location.path(),
