@@ -107,7 +107,7 @@ section "1. build-deb.sh produces the package"
 run_logged "$scratch/build-deb.log" "$repo_root/scripts/packaging/build-deb.sh"
 ok "scripts/packaging/build-deb.sh succeeded"
 
-[ -x "$repo_root/dist/build/release/dg" ] ||
+[ -x "$repo_root/dist/build/release/dp" ] ||
     fail "the release build did not use dist/build as its cargo target dir"
 ok "the release binary was built under dist/build (./target untouched)"
 
@@ -153,7 +153,7 @@ payload_paths="$(printf '%s\n' "$listing" | awk 'NF >= 6 { print $6 }')"
 [ -n "$payload_paths" ] || fail "dpkg-deb -c listed no payload files"
 ok "dpkg-deb -c lists $(printf '%s\n' "$payload_paths" | wc -l | tr -d '[:space:]') payload entries"
 
-printf '%s\n' "$listing" | grep -q -- '^-rwxr-xr-x root/root .* \./usr/bin/dg$' ||
+printf '%s\n' "$listing" | grep -q -- '^-rwxr-xr-x root/root .* \./usr/bin/dp$' ||
     fail "dpkg-deb -c does not list ./usr/bin/dp as an executable regular file owned by root:root"
 ok "dpkg-deb -c lists ./usr/bin/dp as mode 755 root:root regular file"
 
@@ -216,7 +216,7 @@ ok "every path in DEBIAN/md5sums exists in the staged tree"
 # --- 4. the extracted binary runs ------------------------------------------
 section "4. the extracted binary runs"
 
-version_output="$("$scratch/extracted/usr/bin/dg" --version)"
+version_output="$("$scratch/extracted/usr/bin/dp" --version)"
 [ "$version_output" = "dp ${ws_version}" ] ||
     fail "\$prefix/usr/bin/dp --version printed '${version_output}', expected 'dp ${ws_version}'"
 ok "the extracted binary prints '${version_output}'"
