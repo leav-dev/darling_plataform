@@ -12,6 +12,10 @@ publish.workspace = true
 name = "dg"
 path = "src/main.rs"
 
+[[bin]]
+name = "dp"
+path = "src/main.rs"
+
 [dependencies]
 dp-shared-prefix = { path = "../../modules/shared-prefix" }
 serde_json = "1.0.154"
