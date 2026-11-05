@@ -9,7 +9,7 @@ diagnóstico, la integración con el escritorio y los perfiles de ejecución.
 > todavía no instala ni ejecuta aplicaciones: falta Darling en la máquina y faltan
 > las fases 3 y 5. Lo que existe hoy es el esqueleto compilable, la arquitectura
 > documentada con sus ADR, CI verde y el ciclo de vida del DPREFIX dedicado con su
-> CLI (`dg prefix status|validate|start|stop`).
+> CLI (`dp prefix status|validate|start|stop`).
 
 **Darling Platform** es un nombre de trabajo. La decisión sobre el nombre
 definitivo y la organización de repositorios sigue abierta.
@@ -20,7 +20,7 @@ El proyecto persigue dos objetivos separados y explícitos:
 
 1. **Compatibilidad general**: aplicaciones de productividad, desarrollo, diseño
    y multimedia.
-2. **Compatibilidad especializada para videojuegos**: perfiles gráficos, entrada,
+2. **Compatibilidad por categorías**: perfiles gráficos, entrada,
    audio, rendimiento y pruebas propias, como edición o runtime sobre el mismo
    núcleo.
 
@@ -149,7 +149,7 @@ Cargo, para los crates:
 
 ```bash
 cargo test --workspace            # pruebas
-cargo run --bin dg -- --version    # CLI
+cargo run --bin dp -- --version    # CLI
 ```
 
 CMake, para el árbol completo (construye con Cargo dentro de `build/cargo`):

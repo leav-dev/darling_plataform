@@ -36,8 +36,7 @@ flowchart TB
     SPM["Shared Prefix Manager"]
     DHI["Hardware Intelligence Engine"]
     RUNTIME["Runtime · políticas"]
-    GAME["Gaming Runtime"]
-    OTHER["Otros perfiles<br/>productividad · desarrollo · multimedia"]
+    PROFILE["Otros perfiles<br/>productividad · desarrollo · multimedia"]
     DARLING["Darling Core<br/>Mach-O · dyld · APIs Darwin"]
     HOST["Linux host<br/>kernel · drivers · Vulkan · audio · display"]
 
@@ -54,7 +53,7 @@ flowchart TB
     HOST --> DHI
     DHI --> RUNTIME
     RUNTIME --> DARLING
-    GAME --> RUNTIME
+    PROFILE --> RUNTIME
     OTHER --> RUNTIME
     SPM --> DARLING
     DARLING --> HOST

@@ -9,7 +9,7 @@
 ## Contexto
 
 En equipos híbridos convive una GPU dedicada con una integrada. Elegir mal
-degrada el rendimiento de forma visible —sobre todo en juegos— y puede romper la
+degrada el rendimiento de forma visible y puede romper la
 presentación en pantalla, porque la integrada suele estar conectada al display
 mientras la dedicada hace el trabajo pesado.
 
@@ -22,7 +22,7 @@ perfil y de las preferencias del usuario.
 Cuando el sistema tenga GPU dedicada e integrada:
 
 1. detectar y conservar ambas;
-2. priorizar la **dedicada** para renderizado y ejecución de videojuegos;
+2. priorizar la **dedicada** para renderizado y ejecución de aplicaciones;
 3. mantener la integrada disponible para pantallas, presentación y sistemas
    híbridos;
 4. evaluar la integrada como alternativa solo si la dedicada no está disponible o
@@ -37,7 +37,7 @@ dispositivos y no los oculta ni los descarta.
 | Alternativa | Por qué no |
 | --- | --- |
 | Dejar que el driver o el compositor decida | No es predecible ni diagnosticable desde la plataforma |
-| Elegir siempre la integrada | Contradice el objetivo de rendimiento en juegos |
+| Elegir siempre la integrada | Contradice el objetivo de rendimiento en aplicaciones |
 | Elegir la primera GPU enumerada | El orden de enumeración no expresa capacidad ni rol |
 | Ocultar la integrada del reporte | Impide diagnóstico y rompe casos híbridos |
 

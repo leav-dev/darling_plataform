@@ -22,14 +22,14 @@ La plataforma debe separar claramente dos objetivos:
 
 1.  **Compatibilidad general:** aplicaciones de productividad,
     desarrollo, diseño, multimedia y otras categorías.
-2.  **Compatibilidad especializada para videojuegos:** perfiles,
-    gráficos, entrada, audio, rendimiento, diagnóstico y pruebas
-    específicas de juegos.
+2.  **Compatibilidad por categorías:** perfiles,
+    gráficos, entrada, audio, rendimiento, diagnóstico y
+    pruebas por caso de uso.
 
 El nombre **Darling Platform** se utiliza en este documento como nombre
 de trabajo para la plataforma general. No representa una decisión
 irreversible sobre el nombre o la organización definitiva de los
-repositorios. **Darling Gaming** puede mantenerse como nombre de una
+repositorios. **dpdarling plataform** puede mantenerse como nombre de una
 edición o runtime especializado en videojuegos.
 
 ### 1.1 Objetivos
@@ -54,7 +54,7 @@ edición o runtime especializado en videojuegos.
 -   Reimplementar Darwin, Mach, dyld, Objective-C Runtime o servicios
     que ya proporciona Darling.
 -   Crear un intérprete de binarios macOS independiente.
--   Garantizar compatibilidad universal con aplicaciones o juegos.
+-   Garantizar compatibilidad universal con aplicaciones.
 -   Instalar o reemplazar automáticamente drivers del host.
 -   Crear un prefijo Darling independiente por aplicación.
 -   Ejecutar scripts de instaladores sin consentimiento y sin advertir
@@ -145,7 +145,7 @@ Cuando el sistema tenga GPU dedicada e integrada:
 
 1.  Detectar y conservar ambas.
 2.  Priorizar la GPU dedicada para renderizado y ejecución de
-    videojuegos.
+    aplicaciones.
 3.  Mantener la GPU integrada disponible para pantallas, presentación,
     selección de dispositivos y sistemas híbridos.
 4.  Evaluar la integrada como alternativa si la dedicada no está
@@ -205,7 +205,7 @@ flowchart TB
     RUNTIME["Runtime / políticas de ejecución"]
     DARLING["Darling Core<br/>Mach-O, dyld, Darwin APIs"]
     HOST["Linux Host<br/>Kernel, libc, drivers, Vulkan, audio, display"]
-    GAME["Gaming Runtime<br/>perfiles, input, gráficos y rendimiento"]
+    PROFILE["Perfiles de ejecución<br/>productividad, desarrollo, multimedia"]
     OTHER["Otros perfiles de runtime<br/>productividad, desarrollo, multimedia"]
 
     UI --> IPC
@@ -221,7 +221,7 @@ flowchart TB
     DHI --> RUNTIME
     HOST --> DHI
     RUNTIME --> DARLING
-    GAME --> RUNTIME
+    PROFILE --> RUNTIME
     OTHER --> RUNTIME
     SPM --> DARLING
     DARLING --> HOST
@@ -336,7 +336,7 @@ darling-platform/
 │   └── platform-common/
 │
 ├── runtimes/
-│   ├── gaming/
+│   ├── general/
 │   ├── productivity/
 │   ├── development/
 │   └── multimedia/
@@ -695,19 +695,13 @@ ejecución. La compatibilidad real requiere pruebas.
 
 ### 5.8 Runtime y perfiles especializados
 
-El núcleo de ejecución debe ser compartido. Los runtimes especializados
+El núcleo de ejecución debe ser compartido. Los perfiles especializados
 aportan políticas y servicios adicionales, no copias independientes de
 Darling.
 
-**Gaming Runtime** - Política Dedicated GPU First. - Selección de
-dispositivo y backend gráfico. - Perfiles por juego. -
-Entrada/gamepads. - Audio, latencia y rendimiento. - Suite de regresión
-de juegos.
-
-**Productivity / Development / Multimedia** - Perfiles de entorno cuando
-sean necesarios. - Requisitos específicos de dependencias y
-frameworks. - Integración con escritorio. - Diagnóstico de aplicaciones
-por categoría.
+**Ejecución por categoría** - Política y selección de dispositivo y backend
+según el caso de uso. - Perfiles por categoría (productividad, desarrollo,
+multimedia). - Entrada, audio, latencia y diagnóstico según el contexto.
 
 No crear un runtime separado hasta que exista una diferencia funcional
 real que justifique su mantenimiento.
@@ -823,7 +817,7 @@ Ubicación propuesta:
 ```
 
 Configuración de usuario y preferencias pueden residir en
-`~/.config/darling-platform/`, siguiendo XDG Base Directory
+`~/.config/darling-platform/`, siguiendo Xdp Base Directory
 Specification. Los datos variables, cachés y logs deben separarse de la
 configuración cuando corresponda.
 
@@ -999,22 +993,22 @@ DEM y DAI. - Documentación de experiencia de usuario.
 mediante servicios y contratos públicos, sin acceso directo de la
 interfaz al DPREFIX.
 
-### Fase 7 --- Gaming Runtime y optimización
+### Fase 7 --- Optimización por categorías
 
 **Objetivo:** añadir las capacidades específicas para videojuegos sin
 afectar el núcleo general.
 
-Tareas: - Aplicar política Dedicated GPU First. - Seleccionar GPU y
-backend según capacidades verificadas. - Investigar y probar traducción
-Metal/Vulkan existente. - Evaluar extensiones y features reales. -
-Incorporar input/gamepads y audio. - Añadir perfiles por juego. -
-Construir suite de regresión. - Medir rendimiento y estabilidad. -
-Documentar limitaciones de DRM y anticheat.
+Tareas: - Aplicar políticas por categoría. - Seleccionar dispositivo y
+backend según capacidades verificadas. - Investigar y probar traducciones
+de API existentes. - Evaluar extensiones y features reales. - Incorporar
+entrada, audio y diagnóstico según el caso de uso. - Construir suite de
+diagnóstico por categoría. - Medir rendimiento y estabilidad. -
+Documentar limitaciones de DRM y anticocheat.
 
-Entregables: - Runtime gaming inicial. - Perfiles versionados. - Matriz
-de pruebas de juegos. - Diagnósticos gráficos.
+Entregables: - Runtime inicial. - Perfiles versionados. - Matriz de
+pruebas por categoría. - Diagnósticos por categoría.
 
-**Criterio de salida:** cada juego listado como probado tiene resultados
+**Criterio de salida:** cada caso de prueba listado tiene resultados
 reproducibles, versión del entorno y hardware de prueba documentados.
 
 ### Fase 8 --- Distribución y ampliación de plataformas
@@ -1151,7 +1145,7 @@ cambio. - Actualizar este plan y la documentación relacionada.
                                                   pendiente de
                                                   confirmación definitiva
 
-  Darling Gaming          Propuesto como          Runtime/edición gaming
+  dpdarling plataform          Propuesto como          Runtime/edición general
                           especialización         sobre el núcleo
                                                   compartido
 
@@ -1252,7 +1246,7 @@ confiable.
 12. CI y pruebas de integración.
 
 La interfaz visual completa, soporte amplio de PKG, AArch64,
-optimización gaming avanzada y múltiples formatos de paquete deben venir
+optimización por categorías y múltiples formatos de paquete deben venir
 después de validar el flujo central.
 
 ### Definición de terminado del MVP

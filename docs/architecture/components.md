@@ -81,10 +81,10 @@ Implementación actual:
 
 | Operación | Comando | Efecto |
 | --- | --- | --- |
-| Consulta | `dg prefix status [--json]` | Reporta ubicación, fase, interrupción, lock ocupado y advertencias; no escribe nada |
-| Validación | `dg prefix validate [--json]` | Diez checks: existencia, **directorio padre**, tipo, symlink, propiedad, escritura, longitud, ubicación dedicada, datos fuera del prefijo y registro de estado |
-| Arranque | `dg prefix start` | Crea el **directorio padre** del prefijo, luego `darling shell /usr/bin/true` con `DPREFIX` exportado; persiste `Initializing`/`Starting` antes de invocar |
-| Apagado | `dg prefix stop [--active-instances N]` | Se niega con instancias activas; si no, `darling shutdown` |
+| Consulta | `dp prefix status [--json]` | Reporta ubicación, fase, interrupción, lock ocupado y advertencias; no escribe nada |
+| Validación | `dp prefix validate [--json]` | Diez checks: existencia, **directorio padre**, tipo, symlink, propiedad, escritura, longitud, ubicación dedicada, datos fuera del prefijo y registro de estado |
+| Arranque | `dp prefix start` | Crea el **directorio padre** del prefijo, luego `darling shell /usr/bin/true` con `DPREFIX` exportado; persiste `Initializing`/`Starting` antes de invocar |
+| Apagado | `dp prefix stop [--active-instances N]` | Se niega con instancias activas; si no, `darling shutdown` |
 
 Locks: lecturas concurrentes con lock compartido, operaciones de cambio con lock
 exclusivo no bloqueante (`PrefixBusy` en lugar de esperar). El lock vive **fuera**
@@ -202,10 +202,11 @@ elementos desconocidos, advertencias y versiones del analizador y del perfil.
 El núcleo de ejecución es compartido. Los perfiles aportan políticas y servicios,
 no copias de Darling.
 
-- **Gaming Runtime:** política Dedicated GPU First, selección de dispositivo y
-  backend, perfiles por juego, entrada, audio, latencia y suite de regresión.
-- **Productividad / desarrollo / multimedia:** perfiles de entorno cuando hagan
-  falta; no se crea un runtime separado sin una diferencia funcional real.
+- **Ejecución por categoría:** políticas y selección de dispositivo y backend
+  según el caso de uso. - Perfiles por categoría (productividad, desarrollo,
+  multimedia). - Entrada, audio, latencia y diagnóstico según el contexto.
+- **Diagnóstico por categoría:** suites de diagnóstico y validación según el
+  caso de uso.
 
 ---
 
@@ -214,11 +215,11 @@ no copias de Darling.
 **Crate:** `dp-cli` · **Estado:** `prefix` implementado
 
 Implementa `--version`, `--help`, el rechazo explícito de entrada desconocida
-(código de salida 2) y la familia `dg prefix`. Cada comando es un adaptador
+(código de salida 2) y la familia `dp prefix`. Cada comando es un adaptador
 delgado: la lógica vive en el módulo que el comando invoca, y la salida JSON se
 deriva de los tipos del módulo, no de plantillas paralelas.
 
-Próximo comando previsto: `dg hardware scan` (Fase 1 del plan).
+Próximo comando previsto: `dp hardware scan` (Fase 1 del plan).
 
 ---
 
