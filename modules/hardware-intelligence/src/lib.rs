@@ -25,7 +25,8 @@ pub use model::{
     HardwareReport, Libc, LibcFamily, MemoryInfo, Provider, SCHEMA_VERSION, ScanStatus,
     SupportLevel, SystemInfo,
 };
-pub use scan::scan;
+pub use scan::{scan, scan_current_host};
+pub use source::{HostSource, LinuxHost, MappingSource};
 
 #[cfg(test)]
 mod tests {

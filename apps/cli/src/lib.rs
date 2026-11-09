@@ -14,6 +14,10 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Arc;
 
+use dp_hardware_intelligence::{
+    DiagnosticLevel, DisplayStatus, Distribution, HardwareReport, HostSource, Libc, LibcFamily,
+    Provider, ScanStatus,
+};
 use dp_shared_prefix::{
     CheckStatus, CommandOutcome, Darling, Inspection, Phase, PrefixEnv, PrefixLocation,
     PrefixManager, SystemDarling, Validation,
@@ -28,9 +32,10 @@ Commands:
   dp prefix validate  Validate the shared DPREFIX and print one line per check
   dp prefix start     Ensure the environment is up, creating the prefix on first use
   dp prefix stop      Shut the environment down; refuses while managed instances run
+  dp hardware scan    Describe the host: system, CPU, memory, GPUs and displays
 
 Options:
-      --json                      Print the command outcome as JSON (status, validate)
+      --json                      Print the command outcome as JSON (status, validate, scan)
       --active-instances <count>  Managed instances still running (stop only, default 0)
   -h, --help                      Print this help text
   -V, --version                   Print version information
@@ -49,6 +54,17 @@ Subcommands:
 Options:
       --json                      Print the outcome as JSON (status, validate)
       --active-instances <count>  Managed instances still running (stop only)
+";
+
+/// Text shown when `dp hardware` is called without a usable subcommand.
+const HARDWARE_USAGE: &str = "\
+usage: dp hardware <subcommand> [options]
+
+Subcommands:
+  scan    Describe the host: system, CPU, memory, GPUs and displays
+
+Options:
+      --json    Print the report as JSON
 ";
 
 /// Rendered result of one command invocation.
@@ -110,6 +126,12 @@ pub struct CliEnv {
     /// Shared instead of boxed alone because `execute` borrows this value while
     /// the manager needs an owned adapter, and `Darling` is not `Clone`.
     pub darling: Arc<dyn Darling>,
+    /// Host the hardware scan reads.
+    ///
+    /// Injected for the same reason as the other halves: the scan must be
+    /// reproducible from a captured host tree instead of describing whatever
+    /// machine happens to run the tests.
+    pub host: Box<dyn HostSource>,
 }
 
 impl CliEnv {
@@ -118,6 +140,7 @@ impl CliEnv {
         Self {
             prefix: PrefixEnv::from_process(),
             darling: Arc::new(SystemDarling::from_env()),
+            host: Box::new(dp_hardware_intelligence::LinuxHost),
         }
     }
 }
@@ -204,7 +227,72 @@ where
 
     match command {
         "prefix" => execute_prefix(&positionals[1..], json, active_instances, env),
+        "hardware" => execute_hardware(&positionals[1..], json, active_instances, env),
         other => Response::usage_error(format!("unknown command `{other}`")),
+    }
+}
+
+/// Dispatches the `dp hardware` subcommands.
+fn execute_hardware(
+    args: &[String],
+    json: bool,
+    active_instances: Option<u32>,
+    env: &CliEnv,
+) -> Response {
+    let Some(subcommand) = args.first().map(String::as_str) else {
+        return Response::usage_error_with("a `dp hardware` subcommand is required", HARDWARE_USAGE);
+    };
+
+    if let Some(extra) = args.get(1) {
+        return Response::usage_error_with(
+            format!("unexpected argument `{extra}` for `dp hardware {subcommand}`"),
+            HARDWARE_USAGE,
+        );
+    }
+
+    match subcommand {
+        "scan" if active_instances.is_some() => Response::usage_error_with(
+            "`--active-instances` does not apply to `dp hardware scan`",
+            HARDWARE_USAGE,
+        ),
+        "scan" => hardware_scan(env, json),
+        other => Response::usage_error_with(
+            format!("unknown `dp hardware` subcommand `{other}`"),
+            HARDWARE_USAGE,
+        ),
+    }
+}
+
+/// Renders `dp hardware scan`.
+///
+/// Exit code 1 when the host itself could not be described, so a script can tell
+/// a degraded but usable report from a useless one. A partial report is a
+/// success: the missing subsystem is named in its diagnostics.
+fn hardware_scan(env: &CliEnv, json: bool) -> Response {
+    let report = dp_hardware_intelligence::scan(env.host.as_ref());
+    let code = if report.scan_status == ScanStatus::Failed {
+        1
+    } else {
+        0
+    };
+
+    if json {
+        return match serde_json::to_string(&report) {
+            Ok(document) => Response {
+                code,
+                stdout: format!("{document}\n"),
+                stderr: String::new(),
+            },
+            Err(error) => {
+                Response::failure(format!("cannot render the hardware report as JSON: {error}"))
+            }
+        };
+    }
+
+    Response {
+        code,
+        stdout: render_hardware(&report),
+        stderr: String::new(),
     }
 }
 
@@ -394,6 +482,170 @@ fn json_validation(validation: &Validation) -> Result<String, serde_json::Error>
     Ok(format!("{document}\n"))
 }
 
+/// Renders the hardware report as `key: value` lines plus one per diagnostic.
+///
+/// The text form is a summary for a human: the CPU feature list is reported as a
+/// count and every detail stays available through `--json`.
+fn render_hardware(report: &HardwareReport) -> String {
+    let mut lines = vec![
+        format!("schema_version: {}", report.schema_version),
+        format!("scan_status: {}", scan_status_name(report.scan_status)),
+        format!("system.architecture: {}", report.system.architecture),
+        format!(
+            "system.kernel: {}",
+            report.system.kernel.as_deref().unwrap_or("unknown")
+        ),
+        format!(
+            "system.distribution: {}",
+            render_distribution(report.system.distribution.as_ref())
+        ),
+        format!("system.libc: {}", render_libc(report.system.libc.as_ref())),
+    ];
+
+    match &report.cpu {
+        Some(cpu) => {
+            lines.push(format!(
+                "cpu.vendor: {}",
+                cpu.vendor.as_deref().unwrap_or("unknown")
+            ));
+            lines.push(format!(
+                "cpu.model: {}",
+                cpu.model.as_deref().unwrap_or("unknown")
+            ));
+            lines.push(format!(
+                "cpu.cores: {} logical, {} physical, {} socket(s)",
+                cpu.logical_cores,
+                count_or_unknown(cpu.physical_cores),
+                count_or_unknown(cpu.sockets)
+            ));
+            lines.push(format!("cpu.features: {}", cpu.features.len()));
+        }
+        None => lines.push("cpu: unavailable".to_string()),
+    }
+
+    match &report.memory {
+        Some(memory) => {
+            lines.push(format!("memory.total: {}", gibibytes(memory.total_bytes)));
+            if let Some(available) = memory.available_bytes {
+                lines.push(format!("memory.available: {}", gibibytes(available)));
+            }
+            if let Some(swap) = memory.swap_total_bytes {
+                lines.push(format!("memory.swap: {}", gibibytes(swap)));
+            }
+        }
+        None => lines.push("memory: unavailable".to_string()),
+    }
+
+    if report.gpus.is_empty() {
+        lines.push("gpu: none".to_string());
+    }
+    for gpu in &report.gpus {
+        lines.push(format!(
+            "gpu: {} {}:{} class {} driver {}",
+            gpu.pci_address,
+            gpu.vendor_id,
+            gpu.device_id,
+            gpu.class,
+            gpu.driver.as_deref().unwrap_or("none")
+        ));
+    }
+
+    if report.displays.is_empty() {
+        lines.push("display: none".to_string());
+    }
+    for display in &report.displays {
+        let enabled = match display.enabled {
+            Some(true) => " enabled",
+            Some(false) => " disabled",
+            None => "",
+        };
+        let resolution = display
+            .resolution
+            .as_deref()
+            .map(|mode| format!(" {mode}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "display: {} {}{enabled}{resolution}",
+            display.connector,
+            display_status_name(display.status)
+        ));
+    }
+
+    lines.extend(report.diagnostics.iter().map(|diagnostic| {
+        format!(
+            "diagnostic: {} {} {}: {}",
+            diagnostic_level_name(diagnostic.level),
+            provider_name(diagnostic.provider),
+            diagnostic.code,
+            diagnostic.message
+        )
+    }));
+
+    joined_lines(lines)
+}
+
+/// Renders the distribution as `id [version] [(pretty name)]`.
+fn render_distribution(distribution: Option<&Distribution>) -> String {
+    let Some(distribution) = distribution else {
+        return "unknown".to_string();
+    };
+    let mut text = distribution.id.clone();
+    if let Some(version) = &distribution.version_id {
+        text.push(' ');
+        text.push_str(version);
+    }
+    if let Some(pretty) = &distribution.pretty_name {
+        text.push_str(&format!(" ({pretty})"));
+    }
+    text
+}
+
+/// Renders the C library as `family (evidence path)`.
+fn render_libc(libc: Option<&Libc>) -> String {
+    let Some(libc) = libc else {
+        return "unknown".to_string();
+    };
+    format!("{} ({})", libc_family_name(libc.family), libc.evidence)
+}
+
+/// Renders a byte count as a human-readable binary unit.
+fn gibibytes(bytes: u64) -> String {
+    format!("{:.1} GiB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+}
+
+/// Renders an optional count, keeping the line readable when the kernel omits it.
+fn count_or_unknown(count: Option<u32>) -> String {
+    count.map_or_else(|| "unknown".to_string(), |count| count.to_string())
+}
+
+/// Machine name of one enum, taken from the serialization `--json` prints.
+fn json_enum_name(value: Result<serde_json::Value, serde_json::Error>) -> String {
+    match value {
+        Ok(serde_json::Value::String(name)) => name,
+        _ => String::from("unknown"),
+    }
+}
+
+fn scan_status_name(status: ScanStatus) -> String {
+    json_enum_name(serde_json::to_value(status))
+}
+
+fn display_status_name(status: DisplayStatus) -> String {
+    json_enum_name(serde_json::to_value(status))
+}
+
+fn libc_family_name(family: LibcFamily) -> String {
+    json_enum_name(serde_json::to_value(family))
+}
+
+fn diagnostic_level_name(level: DiagnosticLevel) -> String {
+    json_enum_name(serde_json::to_value(level))
+}
+
+fn provider_name(provider: Provider) -> String {
+    json_enum_name(serde_json::to_value(provider))
+}
+
 /// Joins `lines` into the single trailing-newline-terminated block the CLI emits.
 fn joined_lines(lines: Vec<String>) -> String {
     let mut text = lines.join("\n");
@@ -466,6 +718,7 @@ mod tests {
                 home: None,
             },
             darling: Arc::new(FakeDarling),
+            host: Box::new(dp_hardware_intelligence::LinuxHost),
         }
     }
 
@@ -484,7 +737,159 @@ mod tests {
                 home: None,
             },
             darling: Arc::new(SystemDarling::new(program)),
+            host: Box::new(dp_hardware_intelligence::LinuxHost),
         }
+    }
+
+    /// An isolated environment whose hardware scan reads `host` instead of the
+    /// machine running the tests.
+    fn env_with_host(root: &Path, host: Box<dyn HostSource>) -> CliEnv {
+        CliEnv {
+            prefix: PrefixEnv {
+                dprefix: Some(root.join("prefix").into_os_string()),
+                xdg_data_home: Some(root.join("data").into_os_string()),
+                home: None,
+            },
+            darling: Arc::new(FakeDarling),
+            host,
+        }
+    }
+
+    /// A captured host with one discrete GPU and one connected internal panel.
+    fn captured_host() -> dp_hardware_intelligence::MappingSource {
+        use dp_hardware_intelligence::MappingSource;
+
+        MappingSource::new()
+            .with_file(
+                "/etc/os-release",
+                "ID=ubuntu\nVERSION_ID=\"24.04\"\nPRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\n",
+            )
+            .with_file("/proc/sys/kernel/osrelease", "6.8.0-45-generic\n")
+            .with_file(
+                "/proc/cpuinfo",
+                "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 7 7840U\nphysical id\t: 0\ncpu cores\t: 8\nflags\t\t: fpu avx2\n",
+            )
+            .with_file("/proc/meminfo", "MemTotal: 32608376 kB\n")
+            .with_present_path("/lib/x86_64-linux-gnu/libc.so.6")
+            .with_dir("/sys/bus/pci/devices", ["0000:03:00.0"])
+            .with_file("/sys/bus/pci/devices/0000:03:00.0/class", "0x030000\n")
+            .with_file("/sys/bus/pci/devices/0000:03:00.0/vendor", "0x1002\n")
+            .with_file("/sys/bus/pci/devices/0000:03:00.0/device", "0x15bf\n")
+            .with_link(
+                "/sys/bus/pci/devices/0000:03:00.0/driver",
+                "../../../bus/pci/drivers/amdgpu",
+            )
+            .with_dir("/sys/class/drm", ["card0-eDP-1"])
+            .with_file("/sys/class/drm/card0-eDP-1/status", "connected\n")
+            .with_file("/sys/class/drm/card0-eDP-1/enabled", "enabled\n")
+            .with_file("/sys/class/drm/card0-eDP-1/modes", "2880x1800\n")
+    }
+
+    #[test]
+    fn hardware_scan_renders_the_documented_text_lines() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let env = env_with_host(dir.path(), Box::new(captured_host()));
+
+        let response = execute(["hardware", "scan"], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        assert!(response.stderr.is_empty());
+        assert!(response.stdout.ends_with('\n'));
+        assert!(response.stdout.contains("schema_version: 1.0\n"));
+        assert!(response.stdout.contains("scan_status: complete\n"));
+        assert!(
+            response
+                .stdout
+                .contains("system.distribution: ubuntu 24.04 (Ubuntu 24.04.1 LTS)\n")
+        );
+        assert!(response.stdout.contains("system.kernel: 6.8.0-45-generic\n"));
+        assert!(response.stdout.contains("cpu.cores: 1 logical, 8 physical, 1 socket(s)\n"));
+        assert!(response.stdout.contains("memory.total: 31.1 GiB\n"));
+        assert!(response.stdout.contains(
+            "gpu: 0000:03:00.0 0x1002:0x15bf class 0x030000 driver amdgpu\n"
+        ));
+        assert!(response.stdout.contains("display: card0-eDP-1 connected enabled 2880x1800\n"));
+        assert!(
+            response
+                .stdout
+                .contains("diagnostic: info vulkan not_consulted:")
+        );
+    }
+
+    #[test]
+    fn hardware_scan_json_emits_the_versioned_report() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let env = env_with_host(dir.path(), Box::new(captured_host()));
+
+        let response = execute(["hardware", "scan", "--json"], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        let value: serde_json::Value =
+            serde_json::from_str(&response.stdout).expect("the report is valid JSON");
+        assert_eq!(value["schema_version"], "1.0");
+        assert_eq!(value["scan_status"], "complete");
+        assert_eq!(value["gpus"][0]["pci_address"], "0000:03:00.0");
+        assert_eq!(value["displays"][0]["connector"], "card0-eDP-1");
+    }
+
+    #[test]
+    fn hardware_scan_of_a_host_with_no_facts_fails_with_code_1() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let env = env_with_host(
+            dir.path(),
+            Box::new(dp_hardware_intelligence::MappingSource::new()),
+        );
+
+        let response = execute(["hardware", "scan"], &env);
+
+        assert_eq!(response.code, 1);
+        assert!(response.stdout.contains("scan_status: failed\n"));
+        assert!(response.stderr.is_empty());
+    }
+
+    #[test]
+    fn hardware_without_a_subcommand_is_a_usage_error() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let env = env_with_host(dir.path(), Box::new(captured_host()));
+
+        let response = execute(["hardware"], &env);
+
+        assert_eq!(response.code, 2);
+        assert!(response.stdout.is_empty());
+        assert!(
+            response
+                .stderr
+                .contains("error: a `dp hardware` subcommand is required")
+        );
+        assert!(response.stderr.contains("usage: dp hardware <subcommand>"));
+    }
+
+    #[test]
+    fn hardware_scan_rejects_extra_arguments_and_prefix_options() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let env = env_with_host(dir.path(), Box::new(captured_host()));
+
+        let extra = execute(["hardware", "scan", "extra"], &env);
+        assert_eq!(extra.code, 2);
+        assert!(extra.stderr.contains("unexpected argument `extra`"));
+
+        let foreign = execute(["hardware", "scan", "--active-instances", "1"], &env);
+        assert_eq!(foreign.code, 2);
+        assert!(
+            foreign
+                .stderr
+                .contains("`--active-instances` does not apply to `dp hardware scan`")
+        );
+    }
+
+    #[test]
+    fn the_usage_block_lists_the_hardware_command() {
+        assert!(USAGE.contains("dp hardware scan"));
+        let dir = tempfile::tempdir().expect("temp dir");
+        let env = env_with_host(dir.path(), Box::new(captured_host()));
+        let response = execute(["--help"], &env);
+        assert_eq!(response.code, 0);
+        assert!(response.stdout.contains("dp hardware scan"));
     }
 
     /// Writes an executable shell script that appends its arguments and the

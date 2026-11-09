@@ -30,6 +30,7 @@ version = "0.1.0"
 name = "dp-cli"
 version = "0.1.0"
 dependencies = [
+ "dp-hardware-intelligence",
  "dp-shared-prefix",
  "serde_json",
  "tempfile",
