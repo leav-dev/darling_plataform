@@ -11,6 +11,14 @@
 //! Discovery must stay partial and fault tolerant: an unavailable subsystem
 //! degrades the report instead of invalidating it, and no scan requires root.
 
+pub mod model;
+
+pub use model::{
+    CpuInfo, Diagnostic, DiagnosticLevel, DisplayInfo, DisplayStatus, Distribution, GpuInfo,
+    HardwareReport, Libc, LibcFamily, MemoryInfo, Provider, SCHEMA_VERSION, ScanStatus,
+    SupportLevel, SystemInfo,
+};
+
 #[cfg(test)]
 mod tests {
     #[test]
