@@ -112,11 +112,11 @@ Decisión del usuario: **procfs/sysfs puro con fuente inyectable**, **sin Vulkan
 
 | ID | Spec | Entrega | Commit |
 | --- | --- | --- | --- |
-| T1 | S4, S5 | Modelo de dominio: `HardwareReport`, `ScanStatus`, `SupportLevel`, `SystemInfo`, `CpuInfo`, `MemoryInfo`, `GpuInfo`, `DisplayInfo`, `Diagnostic`, `schema_version` y serialización | — |
-| T2 | S2, S3, S8 | `HostSource` inyectable + `LinuxHost` + proveedores de sistema, CPU y memoria con diagnósticos | — |
-| T3 | S2, S3, S8 | Enumeración de GPUs PCI por sysfs (BDF estable) y pantallas/sesión gráfica | — |
-| T4 | S6, S7, S9 | CLI `dp hardware scan` con salida texto y `--json`, help y códigos de salida | — |
-| T5 | S6 | Docs de campos y limitaciones, `components.md`, `data-flow.md`, ADR-0011 y CHANGELOG | — |
+| T1 | S4, S5 | Modelo de dominio: `HardwareReport`, `ScanStatus`, `SupportLevel`, `SystemInfo`, `CpuInfo`, `MemoryInfo`, `GpuInfo`, `DisplayInfo`, `Diagnostic`, `schema_version` y serialización | `b38c9b8` |
+| T2 | S2, S3, S8 | `HostSource` inyectable + `LinuxHost` + proveedores de sistema, CPU y memoria con diagnósticos | `994b389` |
+| T3 | S2, S3, S8 | Enumeración de GPUs PCI por sysfs (BDF estable) y pantallas/sesión gráfica | `dcb3152` |
+| T4 | S6, S7, S9 | CLI `dp hardware scan` con salida texto y `--json`, help y códigos de salida | `aa5f994` |
+| T5 | S6 | Docs de campos y limitaciones, `components.md`, `data-flow.md`, ADR-0011 y CHANGELOG | `7f716ec` |
 
 ## Log
 
@@ -125,3 +125,4 @@ Decisión del usuario: **procfs/sysfs puro con fuente inyectable**, **sin Vulkan
 - **L3** — Decisión del usuario: Vulkan fuera del corte 1. Motivo: mantener cero dependencias nuevas y un reporte verificable en esta máquina y en CI headless; Vulkan entra como tarea propia con ADR y loader dinámico.
 - **L4** — Decisión del usuario: procfs/sysfs puro con fuente inyectable. Motivo: parsers testeables con fixtures y crate portable; `raw-cpuid` queda descartado para este corte.
 - **L5** — Relevamiento de entorno: el workspace no compila en Windows (`dp-shared-prefix` usa APIs Unix); el toolchain MSVC está roto (`link.exe` resuelto al `link` de Git). El crate DHI se mantiene std-only para poder correr `cargo test -p dp-hardware-intelligence` con el toolchain GNU.
+- **L6** — Verificación local: 61 tests de `dp-hardware-intelligence` en verde, `clippy -D warnings` y `rustfmt --check` limpios. `dp-cli` no se puede compilar en esta máquina (depende de `dp-shared-prefix`): sus seis tests nuevos y el comando quedan verficados por revisión estática y por CI en Linux. Una verificación independiente detectó que faltaban los re-exports de `HostSource`, `LinuxHost` y `MappingSource`; corregido antes del commit.
