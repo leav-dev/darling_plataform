@@ -897,7 +897,7 @@ características soportadas. - Detectar memoria. - Enumerar GPUs PCI. -
 Consultar Vulkan opcionalmente. - Correlacionar GPUs PCI y Vulkan. -
 Generar reporte JSON versionado. - Implementar diagnósticos parciales.
 
-Entregables: - CLI `dp-hardware scan`. - Salida JSON y texto. - Pruebas
+Entregables: - CLI `dp hardware scan`. - Salida JSON y texto. - Pruebas
 unitarias y fixtures. - Documentación de campos y limitaciones.
 
 **Criterio de salida:** el escaneo funciona sin root y la ausencia de

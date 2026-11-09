@@ -19,6 +19,17 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- `dp hardware scan`, con salida de texto para lectura humana y `--json` para
+  consumidores; sale con código 1 solo cuando el host no se pudo describir.
+- Reporte de hardware versionado (`schema_version` 1.0) con diagnósticos por
+  subsistema: sistema (distribución, kernel, libc), CPU, memoria, GPUs PCI
+  identificadas por BDF y pantallas que publica el kernel. Una fuente ausente
+  degrada el reporte a `partial`, no lo invalida.
+- La enumeración Vulkan queda deliberadamente fuera de este corte y el reporte lo
+  declara con el diagnóstico informativo `not_consulted`.
+- Documentación del reporte de hardware: campos, reglas de serialización,
+  versionado, códigos de diagnóstico y limitaciones
+  (`docs/architecture/hardware-report.md`) y `ADR-0011`.
 - Instalador de un comando (`scripts/install.sh`): instala el Darling pineado
   verificado por sha256 y el paquete `darling-platform`, elevando privilegios solo
   en los pasos que los necesitan.

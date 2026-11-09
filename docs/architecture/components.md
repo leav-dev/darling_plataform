@@ -11,24 +11,24 @@ documentación del crate. Ningún componente tiene lógica todavía.
 
 ## Hardware Intelligence Engine (DHI)
 
-**Crate:** `dp-hardware-intelligence` · **Estado:** esqueleto
+**Crate:** `dp-hardware-intelligence` · **Estado:** implementado (Fase 1)
 
 Produce un perfil verificable del host: arquitectura, modelo y features de CPU,
-memoria, distribución, kernel, libc, GPUs por PCI/sysfs, capacidades Vulkan
-reales (dispositivos, extensiones, propiedades y features consultadas) y sesión
-gráfica cuando esté disponible.
+memoria, distribución, kernel, libc, GPUs por PCI/sysfs y pantallas que publica el
+kernel. Vulkan queda fuera de este corte (ver más abajo).
 
 - **Hace:** detecta, normaliza y publica un reporte versionado con diagnósticos
-  por subsistema.
-- **No hace:** instalar drivers, modificar el host, elegir GPU o backend.
-- **Reglas:** sin root; tolerante a fallos; no infiere features Vulkan a partir de
-  la versión de API; correlaciona PCI con Vulkan para no duplicar dispositivos;
-  identificadores estables (por ejemplo PCI BDF); sin `-march=native`.
+  por subsistema, desde `dp hardware scan` en texto o `--json`.
+- **No hace:** instalar drivers, modificar el host, elegir GPU o backend, ni
+  consultar Vulkan todavía.
+- **Reglas:** sin root; tolerante a fallos (un proveedor que falla degrada el
+  reporte a `partial`, no lo invalida); identificadores estables (PCI BDF); sin
+  `-march=native`; sin dependencias nuevas (`serde` ya estaba en el workspace).
 
 ```rust
 pub struct HardwareReport {
-    pub schema_version: String,
-    pub scan_status: ScanStatus,   // Complete | Partial | Failed
+    pub schema_version: String,  // "1.0"
+    pub scan_status: ScanStatus, // Complete | Partial | Failed
     pub system: SystemInfo,
     pub cpu: Option<CpuInfo>,
     pub gpus: Vec<GpuInfo>,
@@ -38,7 +38,25 @@ pub struct HardwareReport {
 }
 ```
 
-El reporte se versiona para que el runtime evolucione sin romper consumidores.
+El reporte se versiona para que el runtime evolucione sin romper consumidores:
+agregar campos mantiene `1.0`, quitar o resignificar un campo sube el mayor.
+Campos, reglas de serialización, códigos de diagnóstico y limitaciones están en
+[`hardware-report.md`](hardware-report.md).
+
+Implementación actual: un trait `HostSource` inyectable (`read`, `read_dir`,
+`exists`, `read_link`) con dos implementaciones, `LinuxHost` para el host real y
+`MappingSource` para reproducir un host capturado en pruebas, y cinco proveedores
+que nunca abortan entre sí: `system` (`/etc/os-release`, release del kernel, libc
+por heurística sobre el loader), `cpu` (`/proc/cpuinfo`), `memory`
+(`/proc/meminfo`), `gpu` (clase PCI `0x03` en sysfs, BDF como identificador) y
+`display` (conectores de `/sys/class/drm`). El CLI inyecta el `HostSource` en
+`CliEnv`, igual que inyecta el entorno del prefijo y el adaptador de Darling.
+
+**No hace todavía:** enumerar Vulkan. No hay dispositivos, extensiones,
+propiedades ni features Vulkan en el reporte, y el escaneo lo declara con el
+diagnóstico informativo `not_consulted` para que nadie lea el silencio como
+evidencia. La correlación PCI con Vulkan tampoco existe aún: sin lado Vulkan no
+hay nada que correlacionar.
 
 ---
 
@@ -212,14 +230,17 @@ no copias de Darling.
 
 ## CLI (`dp`)
 
-**Crate:** `dp-cli` · **Estado:** `prefix` implementado
+**Crate:** `dp-cli` · **Estado:** `prefix` y `hardware scan` implementados
 
 Implementa `--version`, `--help`, el rechazo explícito de entrada desconocida
-(código de salida 2) y la familia `dp prefix`. Cada comando es un adaptador
-delgado: la lógica vive en el módulo que el comando invoca, y la salida JSON se
-deriva de los tipos del módulo, no de plantillas paralelas.
+(código de salida 2) y las familias `dp prefix` y `dp hardware`. Cada comando es
+un adaptador delgado: la lógica vive en el módulo que el comando invoca, y la
+salida JSON se deriva de los tipos del módulo, no de plantillas paralelas.
 
-Próximo comando previsto: `dp hardware scan` (Fase 1 del plan).
+`dp hardware scan` acepta `--json` y sale con código 1 solo cuando el reporte
+llega `failed`, para que un script distinga un reporte degradado pero usable de
+uno inútil. Vulkan no está entre los comandos previstos hasta su propio corte
+(ADR-0011).
 
 ---
 

@@ -83,24 +83,42 @@ Decisiones que este flujo hace visibles:
 
 ## 3. Escaneo de hardware
 
+Este recorrido está implementado: describe lo que `dp hardware scan` hace hoy.
+
 ```mermaid
 flowchart LR
-    OS["/etc/os-release · /proc · /sys"] --> SYS[system, kernel, libc]
-    CPU["raw-cpuid · getauxval"] --> C[cpu]
-    MEM["/proc/meminfo"] --> M[memory]
-    PCI["sysfs PCI"] --> G[gpus]
-    VK["Vulkan Loader (ash)"] --> GV[capacidades Vulkan]
-    G --> COR[correlación PCI ↔ Vulkan]
-    GV --> COR
-    SYS --> REP["HardwareReport<br/>schema_version + diagnostics"]
+    CLI["dp hardware scan"] --> HS["HostSource<br/>read · read_dir · exists · read_link"]
+    HS --> SYS["system<br/>/etc/os-release · kernel · libc"]
+    HS --> C["cpu<br/>/proc/cpuinfo"]
+    HS --> M["memory<br/>/proc/meminfo"]
+    HS --> G["gpus<br/>sysfs PCI"]
+    HS --> D["displays<br/>sysfs DRM"]
+    SYS --> REP["HardwareReport<br/>schema_version 1.0<br/>diagnostics por subsistema"]
     C --> REP
     M --> REP
-    COR --> REP
+    G --> REP
+    D --> REP
+    REP --> OUT["texto o --json"]
+    VK["Vulkan"] -. "no consultado: not_consulted" .-> REP
 ```
 
+- `HostSource` es lo único que toca el sistema de archivos. En ejecución real es
+  `LinuxHost`; en pruebas es un `MappingSource` con un host capturado, así que los
+  parsers se validan con fixtures y no con la máquina que corre los tests.
 - Cada proveedor corre aislado: su fallo agrega un diagnóstico y marca el reporte
-  como `Partial`, no lo invalida.
-- `scan_status` refleja la cobertura real: `Complete`, `Partial` o `Failed`.
+  como `Partial`, no lo invalida. `Failed` queda reservado para cuando no se pudo
+  describir la identidad del host en absoluto.
+- `scan_status` refleja la cobertura real: `Complete` cuando ningún diagnóstico
+  supera el nivel informativo, `Partial` cuando algo se degradó y `Failed` cuando
+  distribución, kernel y libc quedaron los tres ausentes.
+- El reporte se serializa con reglas fijas: enums en `snake_case`, ausencias
+  omitidas en lugar de `null` y colecciones siempre presentes. Ver
+  [`hardware-report.md`](hardware-report.md).
+- **Vulkan no se consulta en este corte**: no hay loader, ni dispositivos, ni la
+  correlación PCI con Vulkan. La ausencia se declara con el diagnóstico
+  informativo `not_consulted` y no cambia el estado del reporte.
+- El escaneo no requiere root y no escribe nada: solo lee rutas absolutas y
+  resuelve enlaces de sysfs para conocer el driver enlazado.
 - El reporte no selecciona GPU ni backend; solo describe. La política Dedicated GPU
   First se aplica en el runtime.
 

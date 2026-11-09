@@ -38,3 +38,4 @@ es documentación de cómo funciona algo; para eso están
 | [0008](ADR-0008-ciclo-de-vida-prefix.md) | Ciclo de vida verificado del DPREFIX de Darling | aceptada |
 | [0009](ADR-0009-pin-de-darling.md) | Pin de Darling y verificación de instalación | aceptada |
 | [0010](ADR-0010-instalador-deb.md) | Instalador de un comando entregado como paquete `.deb` | aceptada |
+| [0011](ADR-0011-reporte-de-hardware.md) | Reporte de hardware desde procfs/sysfs con fuente inyectable | aceptada |
