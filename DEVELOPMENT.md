@@ -9,7 +9,7 @@ Las decisiones de arquitectura y producto viven en
 
 | Herramienta | Mínimo | Probado con | Notas |
 | --- | --- | --- | --- |
-| Rust | 1.85 (edición 2024) | 1.96.1 | `rustfmt` y `clippy` instalados |
+| Rust | 1.88 (edición 2024) | 1.96.1 | `rustfmt` y `clippy` instalados |
 | CMake | 3.20 | 3.28.3 | Coordina el build y la instalación |
 | Ninja | — | 1.11.1 | Opcional; si falta, CMake usa Makefiles |
 | Git | — | 2.43.0 | |

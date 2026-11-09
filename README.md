@@ -116,7 +116,7 @@ es una dirección, no una obligación de crear directorios vacíos.
 ## Requisitos
 
 - Linux x86-64 (AArch64 se prepara, no se promete).
-- Rust **1.85** o superior (edición 2024) con `rustfmt` y `clippy`.
+- Rust **1.88** o superior (edición 2024) con `rustfmt` y `clippy`.
 - CMake **3.20** o superior; Ninja es opcional y recomendado.
 - Ningún paso de compilación, escaneo o ejecución de la plataforma requiere root.
   Darling sí se instala como binario **setuid root**; el detalle está en

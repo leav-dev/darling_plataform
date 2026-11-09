@@ -7,7 +7,7 @@ paquete `darling-platform`, que provee `dp`.
 
 - Debian/Ubuntu (x86-64). El pin de Darling publica paquetes `.deb` para esta
   familia.
-- Rust 1.85 o superior (`cargo`, `rustc`) si vas a compilar desde el checkout.
+- Rust 1.88 o superior (`cargo`, `rustc`) si vas a compilar desde el checkout.
 - `curl` o `wget`, `unzip`, `dpkg`, `apt-get`, `sudo`, `sha256sum`.
 - Tu contraseña de `sudo`.
 
