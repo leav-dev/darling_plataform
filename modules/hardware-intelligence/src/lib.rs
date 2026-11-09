@@ -12,8 +12,11 @@
 //! degrades the report instead of invalidating it, and no scan requires root.
 
 pub mod cpu;
+pub mod display;
+pub mod gpu;
 pub mod memory;
 pub mod model;
+pub mod scan;
 pub mod source;
 pub mod system;
 
@@ -22,6 +25,7 @@ pub use model::{
     HardwareReport, Libc, LibcFamily, MemoryInfo, Provider, SCHEMA_VERSION, ScanStatus,
     SupportLevel, SystemInfo,
 };
+pub use scan::scan;
 
 #[cfg(test)]
 mod tests {

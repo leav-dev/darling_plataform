@@ -1,6 +1,8 @@
 //! Host operating system identity: distribution, kernel, libc and architecture.
 
-use crate::model::{Diagnostic, DiagnosticLevel, Distribution, Libc, LibcFamily, Provider, SupportLevel, SystemInfo};
+use crate::model::{
+    Diagnostic, DiagnosticLevel, Distribution, Libc, LibcFamily, Provider, SupportLevel, SystemInfo,
+};
 use crate::source::{HostSource, Subsystem, unreadable};
 
 const OS_RELEASE: &str = "/etc/os-release";
@@ -196,8 +198,8 @@ BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
 
     #[test]
     fn quoted_and_unquoted_values_are_read_the_same_way() {
-        let distribution = parse_os_release("ID=arch\nVERSION_ID=rolling\n")
-            .expect("os-release declares ID");
+        let distribution =
+            parse_os_release("ID=arch\nVERSION_ID=rolling\n").expect("os-release declares ID");
         assert_eq!(distribution.id, "arch");
         assert_eq!(distribution.version_id.as_deref(), Some("rolling"));
     }
@@ -273,7 +275,9 @@ BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
     #[test]
     fn musl_is_detected_from_its_dynamic_loader() {
         let source = MappingSource::new().with_present_path("/lib/ld-musl-x86_64.so.1");
-        let libc = detect_libc(&source, "x86_64").value.expect("libc is described");
+        let libc = detect_libc(&source, "x86_64")
+            .value
+            .expect("libc is described");
         assert_eq!(libc.family, LibcFamily::Musl);
         assert!(libc.evidence.contains("ld-musl"));
     }
@@ -281,7 +285,9 @@ BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
     #[test]
     fn glibc_is_detected_from_the_shared_object() {
         let source = MappingSource::new().with_present_path("/lib/x86_64-linux-gnu/libc.so.6");
-        let libc = detect_libc(&source, "x86_64").value.expect("libc is described");
+        let libc = detect_libc(&source, "x86_64")
+            .value
+            .expect("libc is described");
         assert_eq!(libc.family, LibcFamily::Glibc);
         assert_eq!(libc.evidence, "/lib/x86_64-linux-gnu/libc.so.6");
     }

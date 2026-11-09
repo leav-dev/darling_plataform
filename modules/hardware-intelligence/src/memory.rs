@@ -30,7 +30,10 @@ pub fn parse_meminfo(text: &str) -> Subsystem<MemoryInfo> {
         let Some((key, value)) = line.split_once(':') else {
             continue;
         };
-        let Some(kibibytes) = value.split_whitespace().next().and_then(|v| v.parse::<u64>().ok())
+        let Some(kibibytes) = value
+            .split_whitespace()
+            .next()
+            .and_then(|v| v.parse::<u64>().ok())
         else {
             continue;
         };
@@ -97,9 +100,10 @@ SwapFree:        8388604 kB
 
     #[test]
     fn fields_are_matched_by_name_not_by_position() {
-        let memory = parse_meminfo("SwapTotal: 2048 kB\nMemTotal: 4096 kB\nMemAvailable: 1024 kB\n")
-            .value
-            .expect("meminfo is described");
+        let memory =
+            parse_meminfo("SwapTotal: 2048 kB\nMemTotal: 4096 kB\nMemAvailable: 1024 kB\n")
+                .value
+                .expect("meminfo is described");
         assert_eq!(memory.total_bytes, 4_194_304);
         assert_eq!(memory.available_bytes, Some(1_048_576));
         assert_eq!(memory.swap_total_bytes, Some(2_097_152));
@@ -127,7 +131,10 @@ SwapFree:        8388604 kB
         let memory = detect(&source);
         assert!(memory.value.is_none());
         assert!(memory.has_failures());
-        assert_eq!(memory.diagnostics[0].provider, crate::model::Provider::Memory);
+        assert_eq!(
+            memory.diagnostics[0].provider,
+            crate::model::Provider::Memory
+        );
         assert!(memory.diagnostics[0].message.contains("/proc/meminfo"));
     }
 }

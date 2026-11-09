@@ -50,7 +50,8 @@ pub fn parse_cpuinfo(text: &str, architecture: &str) -> Subsystem<CpuInfo> {
             }
             "cpu cores" => {
                 if let Ok(cores) = value.parse::<u32>() {
-                    cores_per_socket = Some(cores_per_socket.map_or(cores, |current| current.max(cores)));
+                    cores_per_socket =
+                        Some(cores_per_socket.map_or(cores, |current| current.max(cores)));
                 }
             }
             "flags" | "Features" => {

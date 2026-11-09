@@ -25,6 +25,9 @@ pub trait HostSource {
 
     /// Reports whether a path exists, without reading it.
     fn exists(&self, path: &str) -> bool;
+
+    /// Resolves a symbolic link to the path it points at.
+    fn read_link(&self, path: &str) -> io::Result<String>;
 }
 
 /// The real host: reads the filesystem of the machine running the scan.
@@ -52,6 +55,10 @@ impl HostSource for LinuxHost {
     fn exists(&self, path: &str) -> bool {
         Path::new(path).exists()
     }
+
+    fn read_link(&self, path: &str) -> io::Result<String> {
+        std::fs::read_link(path).map(|target| target.to_string_lossy().into_owned())
+    }
 }
 
 /// A [`HostSource`] backed by in-memory maps.
@@ -63,6 +70,7 @@ impl HostSource for LinuxHost {
 pub struct MappingSource {
     files: BTreeMap<String, String>,
     directories: BTreeMap<String, Vec<String>>,
+    links: BTreeMap<String, String>,
 }
 
 impl MappingSource {
@@ -94,8 +102,16 @@ impl MappingSource {
     /// Real hosts publish some facts only through a path's presence, such as a
     /// dynamic loader shared object.
     pub fn with_present_path(mut self, path: impl Into<String>) -> Self {
-        self.files
-            .insert(path.into(), String::new());
+        self.files.insert(path.into(), String::new());
+        self
+    }
+
+    /// Declares `path` as a symbolic link pointing at `target`.
+    ///
+    /// sysfs exposes a device's driver this way, so providers resolve it through
+    /// [`HostSource::read_link`] instead of guessing a directory layout.
+    pub fn with_link(mut self, path: impl Into<String>, target: impl Into<String>) -> Self {
+        self.links.insert(path.into(), target.into());
         self
     }
 }
@@ -110,10 +126,7 @@ fn missing(path: &str) -> io::Error {
 
 impl HostSource for MappingSource {
     fn read(&self, path: &str) -> io::Result<String> {
-        self.files
-            .get(path)
-            .cloned()
-            .ok_or_else(|| missing(path))
+        self.files.get(path).cloned().ok_or_else(|| missing(path))
     }
 
     fn read_dir(&self, path: &str) -> io::Result<Vec<String>> {
@@ -124,7 +137,13 @@ impl HostSource for MappingSource {
     }
 
     fn exists(&self, path: &str) -> bool {
-        self.files.contains_key(path) || self.directories.contains_key(path)
+        self.files.contains_key(path)
+            || self.directories.contains_key(path)
+            || self.links.contains_key(path)
+    }
+
+    fn read_link(&self, path: &str) -> io::Result<String> {
+        self.links.get(path).cloned().ok_or_else(|| missing(path))
     }
 }
 
@@ -171,11 +190,7 @@ impl<T> Subsystem<T> {
 }
 
 /// Builds a diagnostic for a subsystem that could not read a required path.
-pub fn unreadable(
-    provider: crate::model::Provider,
-    path: &str,
-    error: &io::Error,
-) -> Diagnostic {
+pub fn unreadable(provider: crate::model::Provider, path: &str, error: &io::Error) -> Diagnostic {
     Diagnostic {
         provider,
         level: DiagnosticLevel::Error,
@@ -186,7 +201,11 @@ pub fn unreadable(
 
 /// Builds a diagnostic for a value the host publishes in a format this scan
 /// does not understand yet.
-pub fn unsupported_format(provider: crate::model::Provider, path: &str, detail: &str) -> Diagnostic {
+pub fn unsupported_format(
+    provider: crate::model::Provider,
+    path: &str,
+    detail: &str,
+) -> Diagnostic {
     Diagnostic {
         provider,
         level: DiagnosticLevel::Warning,
@@ -233,9 +252,12 @@ mod tests {
 
     #[test]
     fn mapping_source_lists_directories_sorted() {
-        let source = MappingSource::new().with_dir("/sys/class/drm", ["card0-HDMI-A-1", "card0-eDP-1"]);
+        let source =
+            MappingSource::new().with_dir("/sys/class/drm", ["card0-HDMI-A-1", "card0-eDP-1"]);
         assert_eq!(
-            source.read_dir("/sys/class/drm").expect("directory is mapped"),
+            source
+                .read_dir("/sys/class/drm")
+                .expect("directory is mapped"),
             vec!["card0-HDMI-A-1".to_string(), "card0-eDP-1".to_string()]
         );
         assert!(source.exists("/sys/class/drm"));
@@ -260,10 +282,34 @@ mod tests {
 
         let degraded = Subsystem::with_diagnostics(
             7_u8,
-            vec![unsupported_format(Provider::Cpu, "/proc/cpuinfo", "no model name")],
+            vec![unsupported_format(
+                Provider::Cpu,
+                "/proc/cpuinfo",
+                "no model name",
+            )],
         );
         assert!(!degraded.has_failures());
         assert_eq!(degraded.value, Some(7));
+    }
+
+    #[test]
+    fn mapping_source_resolves_declared_links() {
+        let source = MappingSource::new().with_link(
+            "/sys/bus/pci/devices/0000:03:00.0/driver",
+            "../../../drivers/amdgpu",
+        );
+        assert!(source.exists("/sys/bus/pci/devices/0000:03:00.0/driver"));
+        assert_eq!(
+            source
+                .read_link("/sys/bus/pci/devices/0000:03:00.0/driver")
+                .expect("link is declared"),
+            "../../../drivers/amdgpu"
+        );
+        assert!(
+            source
+                .read_link("/sys/bus/pci/devices/0000:04:00.0/driver")
+                .is_err()
+        );
     }
 
     #[test]
