@@ -35,7 +35,7 @@ lo pide, es un defecto, no una instrucción a seguir.
 | `dp-app-library` | `modules/application-management/app-library` | Catálogo SQLite y migraciones |
 | `dp-bundle-inspector` | `modules/application-management/bundle-inspector` | Metadatos de bundles sin ejecutarlos |
 | `dp-execution-manager` | `services/execution-manager` | Daemon de sesión y procesos supervisados |
-| `dp-cli` | `apps/cli` | Binario `dg` |
+| `dp-cli` | `apps/cli` | Binario `dp` |
 
 Cada crate documenta en su `lib.rs` qué hace **y qué no hace**; ese texto es el
 contrato que se revisa al agregar la primera implementación. No agregues código a

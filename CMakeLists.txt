@@ -31,7 +31,7 @@ include(Rust)
 
 enable_testing()
 
-dp_cargo_build(dp-rust BINARIES dg)
+dp_cargo_build(dp-rust BINARIES dp)
 dp_cargo_test(dp-rust-test)
 
 add_test(
@@ -47,7 +47,7 @@ set_tests_properties(
 )
 
 install(
-    PROGRAMS "${DP_CARGO_ARTIFACT_DIR}/dg"
+    PROGRAMS "${DP_CARGO_ARTIFACT_DIR}/dp"
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 

@@ -1,4 +1,4 @@
-//! `dg` binary: forwards the process arguments and environment to
+//! `dp` binary: forwards the process arguments and environment to
 //! [`dp_cli::execute`].
 
 use std::process::ExitCode;

@@ -1,7 +1,7 @@
 # Instalación
 
 Un solo comando instala todo: el Darling pineado (verificado por sha256) y el
-paquete `darling-platform`, que provee `dg`.
+paquete `darling-platform`, que provee `dp`.
 
 ## Requisitos
 
@@ -54,7 +54,7 @@ invocás como root, se niega y explica por qué.
 | Artefacto | Dónde |
 | --- | --- |
 | Paquetes de Darling | Los del release pineado, vía `dpkg` (su binario es setuid root) |
-| `dg` | `/usr/bin/dg`, dentro del paquete `darling-platform` |
+| `dp` | `/usr/bin/dp`, dentro del paquete `darling-platform` |
 | Datos de la plataforma | `~/.local/share/darling-platform/` (estado, lock, prefijo) |
 
 El DPREFIX dedicado se crea en el primer `dp prefix start`, no durante la
@@ -129,6 +129,6 @@ y el hosting remoto llegan con la Fase 8.
 | `error: run this as your normal user, not as root` | Se ejecutó con `sudo` | Corré `scripts/install.sh` sin `sudo` |
 | `missing tools: …` | Falta `cargo`, `unzip` o similar | Instalá lo que indica el mensaje y reintentá |
 | `sudo was refused` | Cancelaste la contraseña | Nada se instaló; reintentá cuando quieras |
-| `dp is not on PATH` | `/usr/bin` fuera del PATH | Revisá el PATH o usá `/usr/bin/dg` |
+| `dp is not on PATH` | `/usr/bin` fuera del PATH | Revisá el PATH o usá `/usr/bin/dp` |
 | `darling shell uname` no dice `Darwin` | Darling instalado pero sin funcionar | Ver [`compatibility/darling-pin.md`](compatibility/darling-pin.md) |
 | `Cannot create /ruta/dp: No such file or directory` | El **directorio padre** del prefijo no existe: Darling hace `mkdir` del prefijo, no de su ruta | `mkdir -p /ruta` antes de `darling`; `dp prefix start` ya lo crea solo |

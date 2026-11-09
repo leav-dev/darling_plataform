@@ -9,10 +9,6 @@ authors.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "dg"
-path = "src/main.rs"
-
-[[bin]]
 name = "dp"
 path = "src/main.rs"
 

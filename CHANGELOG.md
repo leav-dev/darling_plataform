@@ -40,10 +40,10 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 - ADR-0008: contrato verificado del ciclo de vida del DPREFIX.
 - Esqueleto del monorepo: workspace de Cargo con los ocho módulos del plan de
   arquitectura, cada uno con su responsabilidad y no-responsabilidad declaradas.
-- CLI `dg` con `--version` y `--help`, y rechazo explícito de entrada
+- CLI `dp` con `--version` y `--help`, y rechazo explícito de entrada
   desconocida con código de salida 2.
 - Build de CMake que delega la compilación en Cargo, expone las pruebas a CTest e
-  instala `dg` en el prefijo de instalación.
+  instala `dp` en el prefijo de instalación.
 - Gates de CI y script local equivalente: `cargo fmt --check`,
   `cargo clippy -D warnings`, `cargo test`, build de CMake y `ctest`.
 - Documentación de arquitectura: visión general, componentes, flujos de datos y

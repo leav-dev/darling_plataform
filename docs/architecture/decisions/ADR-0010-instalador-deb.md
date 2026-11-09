@@ -10,7 +10,7 @@
 
 El pedido es instalar todo con un solo comando. La plataforma convive con dos
 artefactos de naturaleza distinta: Darling, que es de upstream y se instala como
-binario **setuid root** desde un release pineado (ADR-0009), y `dg`, que es código
+binario **setuid root** desde un release pineado (ADR-0009), y `dp`, que es código
 propio y debe poder actualizarse y desinstalarse como cualquier programa del
 sistema.
 
@@ -22,7 +22,7 @@ consentimiento antes de ejecutar instaladores que cambian el sistema.
 
 1. **El proyecto se empaqueta como `.deb`** (`darling-platform`), construido de
    forma reproducible con `dpkg-deb --root-owner-group`: payload mínimo
-   (`usr/bin/dg`, copyright y changelog), dueño `root:root`, versión tomada del
+   (`usr/bin/dp`, copyright y changelog), dueño `root:root`, versión tomada del
    workspace (`0.1.0`) con revisión de empaquetado (`0.1.0-1`).
 2. **La instalación pasa por `apt`**, no por copiar archivos: resuelve
    dependencias, permite `apt upgrade` y `apt remove` reales.
