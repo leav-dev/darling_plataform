@@ -1,50 +1,112 @@
 # Flujos de datos
 
-Cómo viaja la información en los dos recorridos que definen el MVP: **importar una
-aplicación** y **lanzarla**. Al final, el escaneo de hardware y el apagado del
-prefijo, que son las dos operaciones que pueden dejar el sistema en un estado
-inconsistente si se hacen mal.
+Cómo viaja la información en los tres recorridos que definen el MVP: **importar
+una aplicación**, **analizar si es compatible** y **lanzarla**. Al final, el
+escaneo de hardware y el apagado del prefijo, que son las dos operaciones que
+pueden dejar el sistema en un estado inconsistente si se hacen mal.
 
-Los diagramas describen el comportamiento esperado; todavía no hay
-implementación.
+Los diagramas describen el comportamiento esperado. La importación (§1), el
+análisis de compatibilidad (§2), el escaneo de hardware (§4) y el apagado del
+prefijo (§5) están implementados; el lanzamiento (§3) todavía no.
 
 ## 1. Importación e instalación
 
+Este recorrido está implementado: describe lo que hacen hoy `dp app inspect`,
+`dp app install` y `dp app list`. Detalle en
+[`application-install.md`](application-install.md).
+
 ```mermaid
 flowchart TD
-    A["Seleccionar archivo o bundle"] --> B["Identificar formato"]
-    B --> C["Extraer o montar en staging"]
-    C --> D["Inspeccionar metadatos<br/>Info.plist + Mach-O"]
-    D --> E["Validar estructura y arquitectura"]
-    E --> F["Analizar requisitos"]
-    F --> G{"¿Instalación permitida?"}
-    G -- "No" --> H["Mostrar motivo y cancelar"]
-    G -- "Sí" --> I["Instalar en DPREFIX compartido"]
-    I --> J["Registrar en Application Library"]
-    J --> K["Actualizar icono y catálogo"]
+    A["dp app install &lt;origen&gt;"] --> B["Identificar formato por extensión"]
+    B -. "no soportado" .-> X["Error: .dmg, .pkg y .xip fuera de este corte<br/>sin fila de historial"]
+    B -- ".app o .zip" --> C["Crear Applications/.staging/&lt;installation_id&gt;<br/>en el mismo sistema de archivos que el destino"]
+    C --> D["Copiar el .app o extraer el .zip<br/>validando cada entrada al escribirla"]
+    D --> E["Localizar el único .app preparado"]
+    E --> F["Inspeccionar: Info.plist + Mach-O"]
+    F --> G{"¿Destino ocupado?"}
+    G -- "Sí, sin --replace" --> H["Rechazar: intento fallido en el historial"]
+    G -- "No, o con --replace" --> I["Un solo rename a<br/>Applications/&lt;nombre&gt;.app"]
+    I --> J["Escribir applications + installations<br/>en una transacción"]
+    J -. "el catálogo rechaza: deshacer el rename" .-> H
+    J --> K["Borrar el staging en todos los caminos"]
 ```
 
 Puntos donde se pierde información o se puede romper el sistema:
 
 | Etapa | Qué se conserva | Qué se valida | Qué puede fallar |
 | --- | --- | --- | --- |
-| Identificación | Formato detectado y ruta de origen | Extensión y contenido, no solo el nombre | Formato no soportado por la versión de Darling |
-| Staging | Copia temporal aislada | Rutas dentro del destino, symlinks, permisos | Path traversal, archivo corrupto, espacio insuficiente |
-| Inspección | Metadatos y arquitecturas | Rutas declaradas dentro del bundle, ejecutable presente | `Info.plist` inválido, Mach-O truncado |
-| Análisis | Evidencias y desconocidos | Requisitos contra el perfil de capacidades | Framework o API no soportada |
-| Instalación | Historial con origen, versión y resultado | Lock de escritura del prefijo | Colisión con instalación existente |
-| Registro | Fila en `applications` + historial | Consistencia con lo instalado | Fallo de escritura en SQLite |
+| Identificación | Formato por extensión y ruta de origen | Solo la extensión: el contenido no se adivina | Formato fuera de este corte |
+| Staging | Copia aislada en `Applications/.staging/<id>` | Que `installation_id` sea un componente de ruta; rutas, enlaces y tamaños al copiar | Path traversal, enlace que sale del bundle, ZIP por encima de los límites |
+| Inspección | Metadatos, arquitecturas, frameworks y recursos | Rutas declaradas dentro del bundle, ejecutable presente y Mach-O legible | `Info.plist` inválido o de tipo equivocado, ejecutable ausente |
+| Destino | Nombre saneado y ruta final | Que el nombre sea un solo componente y que el destino no esté ocupado sin `--replace` | Colisión con una instalación existente |
+| Instalación | Un único `rename` entre sistemas de archivos iguales | Que el staging y el destino compartan sistema de archivos | Segundo `rename` fallido; restitución fallida |
+| Registro | Fila en `applications` + fila en `installations` | Consistencia con lo instalado, en una transacción | Fallo de escritura en SQLite; id de intento repetido |
+| Limpieza | Nada: el staging se borra siempre | Que no quede directorio de staging ni copia parcial | Un staging huérfano que ocupa espacio |
 
 Reglas que aplican a todo el recorrido:
 
-- **Nada se instala sin staging previo.** Un fallo no puede dejar una instalación
-  parcial silenciosa.
-- **El consentimiento es explícito** cuando el formato puede ejecutar scripts
-  (PKG), y la advertencia dice que el rollback puede ser incompleto.
-- **El origen se registra siempre**, incluso si la instalación falla: el historial
-  es la evidencia de qué se intentó.
+- **Nada se instala sin staging previo.** El staging vive en el mismo sistema de
+  archivos que el destino, así que la instalación es un solo `rename` y un fallo
+  no puede dejar una instalación parcial silenciosa.
+- **El historial se escribe siempre**, también cuando la instalación falla: la
+  fila lleva `result = failed`, sin `application_id` y con el motivo en `detail`.
+  Solo un origen con formato no soportado no es un intento y no deja fila.
+- **No se sobrescribe nada en silencio.** Un destino ocupado se rechaza salvo
+  `--replace`, que intercambia las copias y actualiza la fila en lugar de
+duplicarla.
+- **El lock de escritura del prefijo se toma antes de escribir.** `dp app install`
+  falla con `PrefixBusy` si otra operación lo tiene.
+- **La importación no analiza compatibilidad.** El instalador registra lo que el
+  bundle declara y no decide si puede ejecutarse; el análisis es un comando aparte
+  (§2) y no bloquea nada.
+- **Nada se ejecuta.** Ni el binario del bundle ni scripts de instalador: por eso
+  `.pkg` está fuera hasta tener su propio flujo con consentimiento explícito.
 
-## 2. Lanzamiento y supervisión
+## 2. Análisis de compatibilidad
+
+Este recorrido está implementado: describe lo que hace hoy `dp app compat <path>
+[--json]`. Detalle en [`application-compat.md`](application-compat.md).
+
+```mermaid
+flowchart TD
+    A["dp app compat &lt;ruta&gt;"] --> B["Bundle Inspector<br/>Info.plist: metadatos, arquitecturas,<br/>LSMinimumSystemVersion, frameworks embebidos"]
+    A --> C["Load commands Mach-O<br/>dylibs declaradas y versión mínima"]
+    B --> D["Motor de compatibilidad<br/>un requisito por evidencia"]
+    C --> D
+    P["deps/darling-capabilities.toml<br/>embebido con include_str!<br/>validado en cada carga"] --> D
+    D --> E["requisitos: kind · subject · status · detail"]
+    E --> F["veredicto = peor requisito"]
+    F --> G["texto"]
+    F --> H["--json<br/>schema_version 1.0"]
+    F -. "código de salida" .-> I["0 compatible o partial<br/>1 not_compatible, unknown o análisis fallido"]
+```
+
+Puntos donde se pierde información o se puede leer de más:
+
+| Etapa | Qué se conserva | Qué se decide | Qué queda afuera |
+| --- | --- | --- | --- |
+| Metadatos | Identidad del bundle, arquitecturas por slice, `LSMinimumSystemVersion`, frameworks embebidos | Slices contra la arquitectura del host; frameworks con copia embebida como advertencia | Recursos, iconos, entitlements y firmas no se miran |
+| Load commands | Install names tal como el binario los declara, sin resolver, y la versión mínima | Cada ruta contra `[[dylibs]]`, por ruta exacta | Símbolos, imports y `LC_RPATH` |
+| Perfil | `profile_version`, `darwin_version`, `macos_version` y las entradas de frameworks y dylibs | Estado de cada sujeto registrado | Todo sujeto que el perfil no registra queda `unknown` |
+| Reporte | Un requisito con su evidencia y el veredicto del peor | Nada: el reporte es la salida | Nada se escribe en el bundle, el prefijo o el catálogo |
+
+Reglas que este flujo hace visibles:
+
+- **El mismo bundle y el mismo perfil dan el mismo reporte.** La arquitectura del
+  host la inyecta el CLI (`std::env::consts::ARCH`), así que el motor no lee la
+  máquina que lo corre.
+- **El perfil llega compilado, no se lee del disco.** Un perfil roto es un error
+  que nombra el campo y el valor, nunca un valor por omisión; corregir una entrada
+  es un cambio revisado del binario.
+- **Nada se resuelve.** `@rpath`, `@executable_path` y `@loader_path` quedan como
+  advertencia, no como búsqueda: el comando no toca el prefijo ni el sistema de
+  archivos fuera del bundle.
+- **`unknown` no es un fallo ni una luz verde.** Es ausencia de evidencia, y sale
+  con código 1 para que un script no lo lea como compatibilidad.
+- **Un análisis fallido no produce reporte.** El error nombra el archivo que no se
+  pudo leer y stdout queda vacío.
+
+## 3. Lanzamiento y supervisión
 
 ```mermaid
 sequenceDiagram
@@ -81,30 +143,48 @@ Decisiones que este flujo hace visibles:
 - **Un crash no es un estado terminal del sistema.** El proceso se marca `Crashed`,
   se registra el diagnóstico y el prefijo sigue disponible.
 
-## 3. Escaneo de hardware
+## 4. Escaneo de hardware
+
+Este recorrido está implementado: describe lo que `dp hardware scan` hace hoy.
 
 ```mermaid
 flowchart LR
-    OS["/etc/os-release · /proc · /sys"] --> SYS[system, kernel, libc]
-    CPU["raw-cpuid · getauxval"] --> C[cpu]
-    MEM["/proc/meminfo"] --> M[memory]
-    PCI["sysfs PCI"] --> G[gpus]
-    VK["Vulkan Loader (ash)"] --> GV[capacidades Vulkan]
-    G --> COR[correlación PCI ↔ Vulkan]
-    GV --> COR
-    SYS --> REP["HardwareReport<br/>schema_version + diagnostics"]
+    CLI["dp hardware scan"] --> HS["HostSource<br/>read · read_dir · exists · read_link"]
+    HS --> SYS["system<br/>/etc/os-release · kernel · libc"]
+    HS --> C["cpu<br/>/proc/cpuinfo"]
+    HS --> M["memory<br/>/proc/meminfo"]
+    HS --> G["gpus<br/>sysfs PCI"]
+    HS --> D["displays<br/>sysfs DRM"]
+    SYS --> REP["HardwareReport<br/>schema_version 1.0<br/>diagnostics por subsistema"]
     C --> REP
     M --> REP
-    COR --> REP
+    G --> REP
+    D --> REP
+    REP --> OUT["texto o --json"]
+    VK["Vulkan"] -. "no consultado: not_consulted" .-> REP
 ```
 
+- `HostSource` es lo único que toca el sistema de archivos. En ejecución real es
+  `LinuxHost`; en pruebas es un `MappingSource` con un host capturado, así que los
+  parsers se validan con fixtures y no con la máquina que corre los tests.
 - Cada proveedor corre aislado: su fallo agrega un diagnóstico y marca el reporte
-  como `Partial`, no lo invalida.
-- `scan_status` refleja la cobertura real: `Complete`, `Partial` o `Failed`.
+  como `Partial`, no lo invalida. `Failed` queda reservado para cuando no se pudo
+  describir la identidad del host en absoluto.
+- `scan_status` refleja la cobertura real: `Complete` cuando ningún diagnóstico
+  supera el nivel informativo, `Partial` cuando algo se degradó y `Failed` cuando
+  distribución, kernel y libc quedaron los tres ausentes.
+- El reporte se serializa con reglas fijas: enums en `snake_case`, ausencias
+  omitidas en lugar de `null` y colecciones siempre presentes. Ver
+  [`hardware-report.md`](hardware-report.md).
+- **Vulkan no se consulta en este corte**: no hay loader, ni dispositivos, ni la
+  correlación PCI con Vulkan. La ausencia se declara con el diagnóstico
+  informativo `not_consulted` y no cambia el estado del reporte.
+- El escaneo no requiere root y no escribe nada: solo lee rutas absolutas y
+  resuelve enlaces de sysfs para conocer el driver enlazado.
 - El reporte no selecciona GPU ni backend; solo describe. La política Dedicated GPU
   First se aplica en el runtime.
 
-## 4. Apagado del prefijo
+## 5. Apagado del prefijo
 
 ```mermaid
 flowchart TD
@@ -123,34 +203,40 @@ El apagado es la operación más destructiva del ciclo de vida: interrumpe traba
 puede dejar el prefijo inconsistente. Por eso exige lock de escritura, estado
 explícito y diagnóstico cuando falla.
 
-## 5. Directorios de usuario
+## 6. Directorios de usuario
 
 ```text
 ~/.local/share/darling-platform/
 ├── prefix/                     # DPREFIX compartido, administrado por Darling
-├── apps/
-│   ├── registry.sqlite         # catálogo
-│   ├── icons/
-│   ├── cache/
-│   └── staging/                # temporal; nunca es destino final
-├── logs/
-│   ├── execution/
-│   ├── installation/
-│   └── daemon/
-└── config/
-    ├── runtime.json
-    └── applications.json
+│   └── Applications/           # bundles instalados: <nombre>.app
+│       └── .staging/           # temporal; nunca es destino final
+├── prefix.lock                 # lock del Shared Prefix Manager, fuera del prefijo
+├── state.json                  # estado persistido del ciclo de vida
+├── library.sqlite3             # catálogo: applications e installations
+├── icons/                      # previsto: iconos convertidos
+├── cache/                      # previsto
+├── logs/                       # previsto
+└── config/                     # previsto
 ```
 
-Configuración y preferencias pueden vivir en `~/.config/darling-platform/` según
-Xdp Base Directory Specification.
+Implementado hoy: el prefijo, su lock y su estado, el catálogo en
+`library.sqlite3`, los bundles en `prefix/Applications/` y el staging en
+`prefix/Applications/.staging/`. Los iconos, la caché, los logs y la
+configuración todavía no existen: el catálogo guarda la ruta del `.icns` que
+está dentro del bundle instalado, no una copia convertida.
 
 Reglas:
 
-- **Los datos de la plataforma no entran en el DPREFIX.** Catálogo, iconos, logs y
-  configuración quedan fuera.
+- **Los datos de la plataforma no entran en el DPREFIX.** Catálogo, lock, estado,
+  iconos, logs y configuración quedan fuera. La única excepción son los bundles
+  instalados, que van a `<prefijo>/Applications/` porque ese es el destino que
+  Darling lee, y el staging, que vive ahí para compartir sistema de archivos con
+  el destino y poder instalarse con un solo `rename`.
 - **El prefijo no se mueve ni se copia con Darling activo.** La documentación de
   backup y recuperación es parte del trabajo del Shared Prefix Manager, no un
   apéndice opcional.
-- **El staging se limpia.** Un staging huérfano ocupa espacio y confunde el
-  diagnóstico; su recuperación es parte del ciclo de instalación.
+- **El staging se limpia.** La guarda del staging lo borra en todos los caminos
+  de salida, así que un staging huérfano solo puede quedar tras un corte abrupto
+  del proceso; el siguiente intento con el mismo `installation_id` lo reemplaza.
+- **Configuración y preferencias** pueden vivir en `~/.config/darling-platform/`
+  según la XDG Base Directory Specification.

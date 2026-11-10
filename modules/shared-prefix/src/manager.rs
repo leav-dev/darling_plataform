@@ -187,7 +187,7 @@ impl PrefixManager {
         if !darling_present {
             warnings.push(format!(
                 "the Darling program '{}' was not found on disk; lifecycle operations will fail \
-                 with DarlingUnavailable until Darling is installed or DG_DARLING points at a \
+                 with DarlingUnavailable until Darling is installed or DP_DARLING points at a \
                  usable binary",
                 self.darling.program().display()
             ));

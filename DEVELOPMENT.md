@@ -9,7 +9,7 @@ Las decisiones de arquitectura y producto viven en
 
 | Herramienta | Mínimo | Probado con | Notas |
 | --- | --- | --- | --- |
-| Rust | 1.85 (edición 2024) | 1.96.1 | `rustfmt` y `clippy` instalados |
+| Rust | 1.88 (edición 2024) | 1.96.1 | `rustfmt` y `clippy` instalados |
 | CMake | 3.20 | 3.28.3 | Coordina el build y la instalación |
 | Ninja | — | 1.11.1 | Opcional; si falta, CMake usa Makefiles |
 | Git | — | 2.43.0 | |
@@ -35,7 +35,7 @@ lo pide, es un defecto, no una instrucción a seguir.
 | `dp-app-library` | `modules/application-management/app-library` | Catálogo SQLite y migraciones |
 | `dp-bundle-inspector` | `modules/application-management/bundle-inspector` | Metadatos de bundles sin ejecutarlos |
 | `dp-execution-manager` | `services/execution-manager` | Daemon de sesión y procesos supervisados |
-| `dp-cli` | `apps/cli` | Binario `dg` |
+| `dp-cli` | `apps/cli` | Binario `dp` |
 
 Cada crate documenta en su `lib.rs` qué hace **y qué no hace**; ese texto es el
 contrato que se revisa al agregar la primera implementación. No agregues código a
@@ -89,7 +89,7 @@ Opciones relevantes:
 | `DP_BUILD_DIR` | `build` | Solo para `scripts/ci/check.sh` |
 | `DPREFIX` | `~/.local/share/darling-platform/prefix` | Prefijo dedicado; el convencional `~/.darling` se rechaza |
 | `XDG_DATA_HOME` | `~/.local/share` | Raíz del directorio de datos de la plataforma |
-| `DG_DARLING` | `darling` | Binario de Darling que invoca el adaptador |
+| `DP_DARLING` | `darling` | Binario de Darling que invoca el adaptador |
 | `XDG_CACHE_HOME` | `~/.cache` | Caché de la descarga verificada del pin de Darling |
 
 El build de CMake usa `--target-dir` dentro del árbol de build: **nunca** escribe
@@ -194,6 +194,6 @@ Una decisión que cambia una regla del plan se registra en
 | CMake sigue usando un perfil viejo | Caché de `build/` | Borrá el directorio, o pasá `-DDP_CARGO_PROFILE=` de nuevo |
 | `ctest` no encuentra pruebas | No se configuró CMake | `cmake -S . -B build` antes de `ctest --test-dir build` |
 | El build escribe en `./target` | Invocación directa de `cargo` | Es esperable fuera de CMake; `.gitignore` lo cubre |
-| `dp prefix start` falla con `DarlingUnavailable` | No hay binario `darling` | Instalá Darling o apuntá `DG_DARLING` al ejecutable |
+| `dp prefix start` falla con `DarlingUnavailable` | No hay binario `darling` | Instalá Darling o apuntá `DP_DARLING` al ejecutable |
 | `dp prefix start` dice `PrefixBusy` | Otra operación tiene el lock | Esperá a que termine, o revisá `dp prefix status` |
 | `dp prefix stop` rechaza | Hay instancias gestionadas activas | Cerrá esas instancias: `darling shutdown` las mataría |
