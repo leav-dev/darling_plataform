@@ -104,7 +104,4 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
   seguridad y código de conducta.
 - Licencia GPL-3.0-or-later.
 
-<!-- TODO(repo-bootstrap): replace OWNER/REPO with the canonical remote once it
-     exists. No URL is invented before that. -->
-
-[Unreleased]: https://github.com/OWNER/REPO/compare/main...HEAD
+[Unreleased]: https://github.com/leav-dev/darling_plataform/compare/main...HEAD
