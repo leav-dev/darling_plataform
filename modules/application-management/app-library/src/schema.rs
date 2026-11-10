@@ -128,7 +128,10 @@ mod tests {
 
     #[test]
     fn the_migrations_are_contiguous_from_one() {
-        assert!(!MIGRATIONS.is_empty(), "the catalogue needs a first step");
+        assert!(
+            latest_version() >= 1,
+            "the catalogue needs a first step, numbered from one"
+        );
         for (index, migration) in MIGRATIONS.iter().enumerate() {
             assert_eq!(
                 migration.version,
