@@ -1,0 +1,116 @@
+# Perfil de capacidades de Darling, la base de conocimiento del motor de
+# compatibilidad.
+#
+# Este archivo está versionado y el motor lo embebe con `include_str!`, así que
+# cada reporte cita exactamente la `profile_version` que se revisa en el
+# repositorio: corregir una entrada es un cambio de código con revisión, no una
+# propiedad silenciosa del entorno.
+#
+# Regla de honestidad: `supported` sólo se escribe cuando existe una prueba
+# registrada contra el Darling fijado en `deps/darling.toml`. Todo lo que el
+# proyecto no haya verificado contra ese pin se marca `unknown`, y nada se
+# declara `supported` por suponerlo. Ver ADR-0013 en
+# `docs/architecture/decisions/`.
+#
+# Estados admitidos: `supported` (funciona), `partial` (funciona con
+# limitaciones documentadas), `unsupported` (no funciona) y `unknown` (nadie lo
+# verificó todavía).
+#
+# `darwin_version` es la versión de Darwin del pin y se cita sólo como
+# referencia. Las comparaciones del análisis usan `macos_version`, la versión de
+# macOS que esa familia Darwin representa (Darwin 20.6.0 → macOS 11.6) y que se
+# toma como línea base.
+
+profile_version = "1"
+darwin_version = "20.6.0"
+macos_version = "11.6"
+
+# Frameworks que una aplicación de escritorio (editor de texto, aplicación Qt o
+# AppKit) referencia en sus load commands. Ninguno está verificado todavía
+# contra el pin, así que todos quedan como `unknown`: el análisis los reporta
+# como desconocidos, nunca como compatibles.
+
+[[frameworks]]
+name = "AppKit"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin; base de casi toda aplicación con interfaz."
+
+[[frameworks]]
+name = "Foundation"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[frameworks]]
+name = "CoreFoundation"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[frameworks]]
+name = "CoreGraphics"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[frameworks]]
+name = "CoreText"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin; se alcanza a través de CoreGraphics."
+
+[[frameworks]]
+name = "Metal"
+status = "unknown"
+note = "El pin no documenta soporte de Metal y nadie lo verificó; no se asume."
+
+[[frameworks]]
+name = "Security"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[frameworks]]
+name = "IOKit"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+# Bibliotecas dinámicas del sistema que un binario macOS carga al arrancar. Las
+# rutas se comparan de forma exacta: la misma biblioteca referenciada como
+# `@rpath/...` no coincide con la entrada absoluta y el motor la trata por
+# separado.
+
+[[dylibs]]
+path = "/usr/lib/libSystem.B.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[dylibs]]
+path = "/usr/lib/libobjc.A.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[dylibs]]
+path = "/usr/lib/libc++.1.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[dylibs]]
+path = "/usr/lib/libz.1.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[dylibs]]
+path = "/usr/lib/libsqlite3.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[dylibs]]
+path = "/usr/lib/libiconv.2.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[dylibs]]
+path = "/usr/lib/libbz2.1.0.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
+
+[[dylibs]]
+path = "/usr/lib/libxml2.2.dylib"
+status = "unknown"
+note = "No hay ninguna prueba registrada contra el pin."
