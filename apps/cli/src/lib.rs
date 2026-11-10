@@ -19,6 +19,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use dp_app_installer::{InstallRequest, InstalledApplication};
 use dp_app_library::{ApplicationRecord, Library};
 use dp_bundle_inspector::{Architecture, BundleMetadata};
+use dp_compatibility_engine::{CompatibilityReport, RequirementKind, RequirementStatus, Verdict};
 use dp_hardware_intelligence::{
     DiagnosticLevel, DisplayStatus, Distribution, HardwareReport, HostSource, Libc, LibcFamily,
     Provider, ScanStatus,
@@ -41,6 +42,7 @@ Commands:
   dp app inspect      Inspect a .app bundle and print the metadata it declares
   dp app install      Install a .app bundle or .zip archive into the DPREFIX
   dp app list         List the applications the catalogue holds
+  dp app compat       Analyse what a .app bundle requires against Darling's capabilities
 
 Options:
       --json                      Print the command outcome as JSON (status, validate, scan, app)
@@ -84,10 +86,16 @@ Subcommands:
   inspect <path>  Inspect a .app bundle and print the metadata it declares
   install <path>  Install a .app bundle or .zip archive into the DPREFIX
   list            List the applications the catalogue holds
+  compat <path>   Analyse what a .app bundle requires against Darling's capabilities
 
 Options:
-      --json     Print the outcome as JSON (inspect, install, list)
+      --json     Print the outcome as JSON (inspect, install, list, compat)
       --replace  Replace an installed application (install only)
+
+Exit codes of `dp app compat`:
+  0  the verdict is compatible or partial
+  1  the verdict is not_compatible or unknown, or the analysis failed
+  2  a usage error
 ";
 
 /// Name of the SQLite catalogue inside the platform data directory.
@@ -377,6 +385,13 @@ fn execute_app(
             Ok(source) => app_install(Path::new(source), replace, json, env),
             Err(response) => response,
         },
+        "compat" if replace => {
+            Response::usage_error_with("`--replace` does not apply to `dp app compat`", APP_USAGE)
+        }
+        "compat" => match app_path_argument(args, subcommand) {
+            Ok(bundle) => app_compat(Path::new(bundle), json),
+            Err(response) => response,
+        },
         "list" if replace => {
             Response::usage_error_with("`--replace` does not apply to `dp app list`", APP_USAGE)
         }
@@ -395,11 +410,13 @@ fn execute_app(
     }
 }
 
-/// Reads the single `<path>` argument of `dp app inspect` and `dp app install`.
+/// Reads the single `<path>` argument of `dp app inspect`, `dp app install` and
+/// `dp app compat`.
 ///
 /// The argument loop consumes every option before this runs, so a value that
 /// still starts with `-` was meant as a path and cannot be one: it is reported
-/// as a missing path instead of being handed to the inspector or the installer.
+/// as a missing path instead of being handed to the inspector, the installer or
+/// the compatibility engine.
 fn app_path_argument<'a>(args: &'a [String], subcommand: &str) -> Result<&'a str, Response> {
     let Some(path) = args.get(1) else {
         return Err(Response::usage_error_with(
@@ -443,6 +460,83 @@ fn app_inspect(bundle: &Path, json: bool) -> Response {
     }
 
     Response::output(render_bundle(&metadata))
+}
+
+/// Renders `dp app compat`.
+///
+/// Read-only like [`app_inspect`], with a stronger consequence: this command
+/// never resolves the prefix location, the catalogue or the lock file, and the
+/// engine only reads the bundle. Exit code 1 covers both a failed analysis and a
+/// verdict that is not established compatibility — `not_compatible` and
+/// `unknown` are equally not a green light for a script, while `compatible` and
+/// `partial` are.
+fn app_compat(bundle: &Path, json: bool) -> Response {
+    let request = dp_compatibility_engine::AnalysisRequest {
+        bundle,
+        host_architecture: std::env::consts::ARCH,
+    };
+    let report = match dp_compatibility_engine::analyze(&request) {
+        Ok(report) => report,
+        Err(error) => return Response::failure(error),
+    };
+    let code = compat_exit_code(report.verdict);
+
+    if json {
+        return match serde_json::to_string(&report) {
+            Ok(document) => Response {
+                code,
+                stdout: format!("{document}\n"),
+                stderr: String::new(),
+            },
+            Err(error) => Response::failure(format!(
+                "cannot render the compatibility report as JSON: {error}"
+            )),
+        };
+    }
+
+    Response {
+        code,
+        stdout: render_compat(&report),
+        stderr: String::new(),
+    }
+}
+
+/// Exit code the verdict carries.
+///
+/// Only an established compatibility is a success: `not_compatible` is a known
+/// failure and `unknown` is an absence of evidence, and neither is a reason to
+/// let a script continue.
+fn compat_exit_code(verdict: Verdict) -> u8 {
+    match verdict {
+        Verdict::Compatible | Verdict::Partial => 0,
+        Verdict::NotCompatible | Verdict::Unknown => 1,
+    }
+}
+
+/// Renders the compatibility report as `key: value` lines plus one line per
+/// requirement, the same summary style `dp hardware scan` prints.
+fn render_compat(report: &CompatibilityReport) -> String {
+    let mut lines = vec![
+        format!("verdict: {}", verdict_name(report.verdict)),
+        format!("analyser_version: {}", report.analyser_version),
+        format!("profile_version: {}", report.profile_version),
+    ];
+
+    if report.requirements.is_empty() {
+        lines.push(String::from("requirement: none"));
+        return joined_lines(lines);
+    }
+    lines.extend(report.requirements.iter().map(|requirement| {
+        format!(
+            "requirement: {} {} {}: {}",
+            requirement_status_name(requirement.status),
+            requirement_kind_name(requirement.kind),
+            requirement.subject,
+            requirement.detail
+        )
+    }));
+
+    joined_lines(lines)
 }
 
 /// Renders `dp app install`.
@@ -1081,6 +1175,20 @@ fn check_status_name(status: CheckStatus) -> String {
         Ok(serde_json::Value::String(name)) => name,
         _ => String::from("unknown"),
     }
+}
+
+/// Text name of the report's verdict, taken from the serialization `--json`
+/// prints so the two forms can never drift.
+fn verdict_name(verdict: Verdict) -> String {
+    json_enum_name(serde_json::to_value(verdict))
+}
+
+fn requirement_kind_name(kind: RequirementKind) -> String {
+    json_enum_name(serde_json::to_value(kind))
+}
+
+fn requirement_status_name(status: RequirementStatus) -> String {
+    json_enum_name(serde_json::to_value(status))
 }
 
 #[cfg(test)]
@@ -1860,6 +1968,71 @@ mod tests {
         bundle
     }
 
+    /// `CPU_TYPE_ARM64`, `CPU_ARCH_ABI64 | CPU_TYPE_ARM`.
+    const CPU_TYPE_ARM64: u32 = 0x0100_000c;
+
+    /// A universal binary holding one thin slice per `cputypes` entry, behind the
+    /// big-endian `fat_arch` table `lipo` writes.
+    fn fat_macho(cputypes: &[u32]) -> Vec<u8> {
+        const FAT_ARCH_LENGTH: usize = 20;
+
+        let slices: Vec<Vec<u8>> = cputypes
+            .iter()
+            .map(|cputype| thin_macho(*cputype))
+            .collect();
+        let mut bytes = vec![0xca, 0xfe, 0xba, 0xbe];
+        bytes.extend_from_slice(&(slices.len() as u32).to_be_bytes());
+        let mut offset = (8 + FAT_ARCH_LENGTH * slices.len()) as u32;
+        for (cputype, slice) in cputypes.iter().zip(&slices) {
+            bytes.extend_from_slice(&cputype.to_be_bytes());
+            bytes.extend_from_slice(&3u32.to_be_bytes()); // cpusubtype: CPU_SUBTYPE_ANY
+            bytes.extend_from_slice(&offset.to_be_bytes());
+            bytes.extend_from_slice(&(slice.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(&0u32.to_be_bytes()); // align: 2^0
+            offset += slice.len() as u32;
+        }
+        for slice in &slices {
+            bytes.extend_from_slice(slice);
+        }
+        bytes
+    }
+
+    /// An `Info.plist` that omits `LSMinimumSystemVersion`, so the analysis has
+    /// one requirement nobody can decide.
+    const UNDECIDED_PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.example.undecided</string>
+	<key>CFBundleName</key>
+	<string>Undecided</string>
+	<key>CFBundleExecutable</key>
+	<string>Undecided</string>
+</dict>
+</plist>
+"#;
+
+    /// An `Undecided.app` below `root`: a bundle whose report is `unknown` because
+    /// it declares no minimum macOS version, with an executable carrying a slice
+    /// for either architecture CI may use.
+    ///
+    /// The universal binary keeps the test independent of the machine running
+    /// it: an architecture the host cannot run would be `not_compatible`, and the
+    /// report under test would then be a failure instead of an open question.
+    fn undecided_bundle(root: &Path) -> PathBuf {
+        let bundle = root.join("Undecided.app");
+        write_fixture(
+            &bundle.join("Contents").join("Info.plist"),
+            UNDECIDED_PLIST.as_bytes(),
+        );
+        write_fixture(
+            &bundle.join("Contents").join("MacOS").join("Undecided"),
+            &fat_macho(&[CPU_TYPE_X86_64, CPU_TYPE_ARM64]),
+        );
+        bundle
+    }
+
     /// A fixture path as the argument a test hands to `execute`.
     fn path_arg(path: &Path) -> &str {
         path.to_str().expect("a temporary path is valid UTF-8")
@@ -2006,6 +2179,204 @@ mod tests {
     }
 
     #[test]
+    fn app_compat_renders_an_undecided_report_and_exits_1() {
+        let (dir, env) = isolated();
+        let bundle = undecided_bundle(dir.path());
+        let profile = dp_compatibility_engine::Profile::embedded()
+            .expect("the embedded capability profile must be valid");
+
+        let response = execute(["app", "compat", path_arg(&bundle)], &env);
+
+        assert_eq!(
+            response.code, 1,
+            "an unknown verdict is not established compatibility"
+        );
+        assert_eq!(response.stderr, "");
+        assert!(response.stdout.ends_with('\n'));
+        let header: Vec<String> = response
+            .stdout
+            .lines()
+            .take(3)
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            header,
+            vec![
+                String::from("verdict: unknown"),
+                format!(
+                    "analyser_version: {}",
+                    dp_compatibility_engine::ANALYSER_VERSION
+                ),
+                format!("profile_version: {}", profile.profile_version),
+            ],
+            "unexpected output: {}",
+            response.stdout
+        );
+        let requirements: Vec<&str> = response.stdout.lines().skip(3).collect();
+        assert_eq!(
+            requirements.len(),
+            2,
+            "one line per requirement: {}",
+            response.stdout
+        );
+        assert!(
+            requirements[0].starts_with("requirement: satisfied architecture "),
+            "unexpected output: {}",
+            response.stdout
+        );
+        assert!(
+            requirements[1].starts_with("requirement: unknown minimum_os none: "),
+            "unexpected output: {}",
+            response.stdout
+        );
+        assert!(
+            requirements[1].contains("declare a minimum macOS version"),
+            "the undecided requirement must say why: {}",
+            response.stdout
+        );
+    }
+
+    #[test]
+    fn app_compat_json_emits_the_versioned_report() {
+        let (dir, env) = isolated();
+        let bundle = undecided_bundle(dir.path());
+        let profile = dp_compatibility_engine::Profile::embedded()
+            .expect("the embedded capability profile must be valid");
+
+        let response = execute(["app", "compat", path_arg(&bundle), "--json"], &env);
+
+        assert_eq!(response.code, 1);
+        assert_eq!(response.stderr, "");
+        assert!(response.stdout.ends_with('\n'));
+        let document = json_document(&response.stdout);
+        assert_eq!(document["verdict"].as_str(), Some("unknown"));
+        assert_eq!(
+            document["analyser_version"].as_str(),
+            Some(dp_compatibility_engine::ANALYSER_VERSION)
+        );
+        assert_eq!(
+            document["schema_version"].as_str(),
+            Some(dp_compatibility_engine::SCHEMA_VERSION)
+        );
+        assert_eq!(
+            document["profile_version"].as_str(),
+            Some(profile.profile_version.as_str())
+        );
+        let requirements = document["requirements"]
+            .as_array()
+            .unwrap_or_else(|| panic!("requirements is a list: {}", response.stdout));
+        assert!(
+            requirements
+                .iter()
+                .any(|requirement| requirement["kind"].as_str() == Some("minimum_os")),
+            "the report must carry the evidence it rests on: {}",
+            response.stdout
+        );
+    }
+
+    #[test]
+    fn app_compat_creates_neither_the_prefix_nor_the_data_directory() {
+        let (dir, env) = isolated();
+        let bundle = undecided_bundle(dir.path());
+        let location = location(&env);
+
+        let response = execute(["app", "compat", path_arg(&bundle)], &env);
+
+        assert_eq!(response.code, 1, "the fixture's verdict is unknown");
+        assert_eq!(response.stderr, "");
+        assert!(
+            !location.path().exists(),
+            "compat must not create the prefix"
+        );
+        assert!(
+            !location.data_dir().exists(),
+            "compat must not create the platform data directory"
+        );
+        assert!(
+            !location.lock_path().exists(),
+            "compat must not create the lock file"
+        );
+        assert!(
+            !dir.path().join("data").exists(),
+            "compat must leave the data home absent"
+        );
+    }
+
+    #[test]
+    fn app_compat_of_a_malformed_bundle_fails_with_code_1() {
+        let (dir, env) = isolated();
+        let bundle = dir.path().join("Broken.app");
+        write_fixture(&bundle.join("Contents").join("Info.plist"), b"not a plist");
+
+        let response = execute(["app", "compat", path_arg(&bundle)], &env);
+
+        assert_eq!(response.code, 1);
+        assert_eq!(response.stdout, "");
+        assert!(
+            response.stderr.starts_with("error: "),
+            "unexpected stderr: {}",
+            response.stderr
+        );
+        assert!(
+            response.stderr.contains("Info.plist"),
+            "the failure must name the file: {}",
+            response.stderr
+        );
+    }
+
+    #[test]
+    fn app_compat_without_a_path_is_a_usage_error() {
+        let (_dir, env) = isolated();
+
+        let response = execute(["app", "compat"], &env);
+
+        assert_eq!(response.code, 2);
+        assert_eq!(response.stdout, "");
+        assert!(
+            response
+                .stderr
+                .contains("`dp app compat` requires the path"),
+            "unexpected stderr: {}",
+            response.stderr
+        );
+        assert!(
+            response.stderr.contains("usage: dp app <subcommand>"),
+            "unexpected stderr: {}",
+            response.stderr
+        );
+        assert!(
+            response
+                .stderr
+                .contains("0  the verdict is compatible or partial"),
+            "the usage block must document the exit codes: {}",
+            response.stderr
+        );
+        assert!(
+            response
+                .stderr
+                .contains("1  the verdict is not_compatible or unknown"),
+            "the usage block must document the exit codes: {}",
+            response.stderr
+        );
+    }
+
+    #[test]
+    fn a_report_without_requirements_renders_one_none_line() {
+        let report = CompatibilityReport {
+            schema_version: String::from(dp_compatibility_engine::SCHEMA_VERSION),
+            verdict: Verdict::Unknown,
+            analyser_version: String::from(dp_compatibility_engine::ANALYSER_VERSION),
+            profile_version: String::from("test"),
+            requirements: Vec::new(),
+        };
+
+        assert_eq!(
+            render_compat(&report),
+            "verdict: unknown\nanalyser_version: 1\nprofile_version: test\nrequirement: none\n"
+        );
+    }
+
+    #[test]
     fn app_without_a_subcommand_and_with_an_unknown_one_is_a_usage_error() {
         let (dir, env) = isolated();
         let bundle = example_bundle(dir.path());
@@ -2057,10 +2428,14 @@ mod tests {
         let bundle = example_bundle(dir.path());
         let path = path_arg(&bundle);
 
-        let cases: [(&[&str], &str); 7] = [
+        let cases: [(&[&str], &str); 8] = [
             (
                 &["app", "inspect", path, "--replace"],
                 "`--replace` does not apply to `dp app inspect`",
+            ),
+            (
+                &["app", "compat", path, "--replace"],
+                "`--replace` does not apply to `dp app compat`",
             ),
             (
                 &["app", "list", "--replace"],
@@ -2107,7 +2482,12 @@ mod tests {
 
     #[test]
     fn the_usage_block_lists_the_app_commands() {
-        for command in ["dp app inspect", "dp app install", "dp app list"] {
+        for command in [
+            "dp app inspect",
+            "dp app install",
+            "dp app list",
+            "dp app compat",
+        ] {
             assert!(USAGE.contains(command), "USAGE must list `{command}`");
         }
 
@@ -2115,7 +2495,12 @@ mod tests {
         let response = execute(["--help"], &env);
 
         assert_eq!(response.code, 0);
-        for command in ["dp app inspect", "dp app install", "dp app list"] {
+        for command in [
+            "dp app inspect",
+            "dp app install",
+            "dp app list",
+            "dp app compat",
+        ] {
             assert!(
                 response.stdout.contains(command),
                 "`{command}` must be listed: {}",
@@ -2123,6 +2508,14 @@ mod tests {
             );
         }
         assert!(response.stdout.contains("--replace"));
+
+        let block = execute(["app"], &env);
+        assert_eq!(block.code, 2);
+        assert!(
+            block.stderr.contains("  compat <path>"),
+            "the `dp app` usage block must list `compat`: {}",
+            block.stderr
+        );
     }
 
     #[test]

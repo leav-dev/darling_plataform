@@ -103,6 +103,7 @@ dependencies = [
  "dp-app-installer",
  "dp-app-library",
  "dp-bundle-inspector",
+ "dp-compatibility-engine",
  "dp-hardware-intelligence",
  "dp-shared-prefix",
  "serde_json",

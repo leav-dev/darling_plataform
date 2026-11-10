@@ -16,6 +16,7 @@ path = "src/main.rs"
 dp-app-installer = { path = "../../modules/application-management/app-installer" }
 dp-app-library = { path = "../../modules/application-management/app-library" }
 dp-bundle-inspector = { path = "../../modules/application-management/bundle-inspector" }
+dp-compatibility-engine = { path = "../../modules/compatibility-engine" }
 dp-hardware-intelligence = { path = "../../modules/hardware-intelligence" }
 dp-shared-prefix = { path = "../../modules/shared-prefix" }
 serde_json = "1.0.154"
