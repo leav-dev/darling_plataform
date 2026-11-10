@@ -118,7 +118,6 @@ mod tests {
         );
     }
 
-    use super::*;
 
     /// A path that cannot exist, so a spawn against it always fails.
     const MISSING_PROGRAM: &str = "/nonexistent/darling-platform-tests/darling";
