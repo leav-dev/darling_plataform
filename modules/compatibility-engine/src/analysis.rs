@@ -1190,7 +1190,7 @@ mod tests {
         assert_eq!(json["profile_version"], "test");
         assert_eq!(json["verdict"], "partial");
         assert!(
-            json.to_string().find("null").is_none(),
+            !json.to_string().contains("null"),
             "no field may serialize as null: {json}"
         );
 
