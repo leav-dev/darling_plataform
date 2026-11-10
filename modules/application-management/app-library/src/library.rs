@@ -126,32 +126,7 @@ impl Library {
     /// (`bundle_id`, `bundle_path`) is already registered; two versions at two
     /// paths are allowed and share the bundle id.
     pub fn record_application(&self, record: &ApplicationRecord) -> Result<()> {
-        let bundle_path = text_path("bundle_path", &record.bundle_path)?;
-        let executable_path = text_path("executable_path", &record.executable_path)?;
-        let icon_path = match &record.icon_path {
-            Some(path) => Some(text_path("icon_path", path)?),
-            None => None,
-        };
-
-        self.connection
-            .execute(
-                INSERT_APPLICATION,
-                params![
-                    record.id,
-                    record.bundle_id,
-                    record.name,
-                    record.version,
-                    bundle_path,
-                    executable_path,
-                    icon_path,
-                    record.architecture,
-                    record.installation_type,
-                    record.installed_at,
-                    record.installation_status,
-                ],
-            )
-            .map(|_| ())
-            .map_err(|error| self.application_insert_error(record, error))
+        self.write_application(&self.connection, record, INSERT_APPLICATION)
     }
 
     /// Stores one application, replacing the row its `id` already names.
@@ -166,32 +141,48 @@ impl Library {
     /// would collide with a row of another `id` is rejected with
     /// [`Error::BundlePathTaken`], and the existing rows are left untouched.
     pub fn replace_application(&self, record: &ApplicationRecord) -> Result<()> {
-        let bundle_path = text_path("bundle_path", &record.bundle_path)?;
-        let executable_path = text_path("executable_path", &record.executable_path)?;
-        let icon_path = match &record.icon_path {
-            Some(path) => Some(text_path("icon_path", path)?),
-            None => None,
-        };
+        self.write_application(&self.connection, record, REPLACE_APPLICATION)
+    }
 
-        self.connection
-            .execute(
-                REPLACE_APPLICATION,
-                params![
-                    record.id,
-                    record.bundle_id,
-                    record.name,
-                    record.version,
-                    bundle_path,
-                    executable_path,
-                    icon_path,
-                    record.architecture,
-                    record.installation_type,
-                    record.installed_at,
-                    record.installation_status,
-                ],
-            )
-            .map(|_| ())
-            .map_err(|error| self.application_insert_error(record, error))
+    /// Stores one application and one installation attempt as a single unit.
+    ///
+    /// The two rows are written inside one SQLite transaction, so an attempt is
+    /// either in the catalogue whole or not at all: a rejected installation row
+    /// leaves no application row behind, and a rejected application row leaves
+    /// no history entry. That is what lets a caller undo the file system work of
+    /// an attempt it could not record, because the catalogue holds no trace of
+    /// the attempt afterwards.
+    ///
+    /// The application `id` is unique in this call, so an application the
+    /// catalogue already holds is refused with [`Error::DuplicateId`]; a caller
+    /// that means to overwrite it uses [`Self::replace_install`] instead. Every
+    /// other rule of [`Self::record_application`] and [`Self::record_installation`]
+    /// applies unchanged, including the (`bundle_id`, `bundle_path`) uniqueness
+    /// and the requirement that a named application exists.
+    pub fn record_install(
+        &self,
+        application: &ApplicationRecord,
+        installation: &InstallationRecord,
+    ) -> Result<()> {
+        self.write_install(application, installation, INSERT_APPLICATION)
+    }
+
+    /// Stores one application and one installation attempt as a single unit,
+    /// replacing the application row its `id` already names.
+    ///
+    /// The transaction behaves exactly like [`Self::record_install`], so a
+    /// rejected installation row leaves the replaced application row as it was;
+    /// the application itself is written with the upsert of
+    /// [`Self::replace_application`], so every mutable column of the row it
+    /// replaces is overwritten and no value of the previous installation
+    /// survives. An `id` the catalogue does not hold is inserted, so one call
+    /// serves both a first installation and a replacement.
+    pub fn replace_install(
+        &self,
+        application: &ApplicationRecord,
+        installation: &InstallationRecord,
+    ) -> Result<()> {
+        self.write_install(application, installation, REPLACE_APPLICATION)
     }
 
     /// Stores one installation attempt, successful or not.
@@ -203,21 +194,7 @@ impl Library {
     /// reports it to the operator when it happens, and a later cut that lists
     /// failed attempts will add the query for it.
     pub fn record_installation(&self, record: &InstallationRecord) -> Result<()> {
-        self.connection
-            .execute(
-                INSERT_INSTALLATION,
-                params![
-                    record.id,
-                    record.application_id,
-                    record.origin,
-                    record.format,
-                    record.result,
-                    record.detail,
-                    record.occurred_at,
-                ],
-            )
-            .map(|_| ())
-            .map_err(|error| self.installation_insert_error(record, error))
+        self.write_installation(&self.connection, record)
     }
 
     /// Lists every stored application, ordered by name and then by id.
@@ -273,6 +250,93 @@ impl Library {
 
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|source| self.database("reading the installations", source))
+    }
+
+    /// Writes one application row with `statement` on `connection`.
+    ///
+    /// `connection` is the catalogue itself or the open transaction of an
+    /// attempt that records an application together with its installation, so
+    /// both paths store the same values and classify their failures the same
+    /// way.
+    fn write_application(
+        &self,
+        connection: &Connection,
+        record: &ApplicationRecord,
+        statement: &'static str,
+    ) -> Result<()> {
+        let bundle_path = text_path("bundle_path", &record.bundle_path)?;
+        let executable_path = text_path("executable_path", &record.executable_path)?;
+        let icon_path = match &record.icon_path {
+            Some(path) => Some(text_path("icon_path", path)?),
+            None => None,
+        };
+
+        connection
+            .execute(
+                statement,
+                params![
+                    record.id,
+                    record.bundle_id,
+                    record.name,
+                    record.version,
+                    bundle_path,
+                    executable_path,
+                    icon_path,
+                    record.architecture,
+                    record.installation_type,
+                    record.installed_at,
+                    record.installation_status,
+                ],
+            )
+            .map(|_| ())
+            .map_err(|error| self.application_insert_error(record, error))
+    }
+
+    /// Writes one installation row on `connection`.
+    fn write_installation(
+        &self,
+        connection: &Connection,
+        record: &InstallationRecord,
+    ) -> Result<()> {
+        connection
+            .execute(
+                INSERT_INSTALLATION,
+                params![
+                    record.id,
+                    record.application_id,
+                    record.origin,
+                    record.format,
+                    record.result,
+                    record.detail,
+                    record.occurred_at,
+                ],
+            )
+            .map(|_| ())
+            .map_err(|error| self.installation_insert_error(record, error))
+    }
+
+    /// Writes an application and its installation as one transaction.
+    ///
+    /// The transaction is opened on the catalogue connection the library
+    /// already owns, so no second connection and no lock of its own is needed.
+    /// A failure in either row drops the transaction, which SQLite rolls back:
+    /// the catalogue keeps the rows it held before the call, never half of the
+    /// attempt.
+    fn write_install(
+        &self,
+        application: &ApplicationRecord,
+        installation: &InstallationRecord,
+        statement: &'static str,
+    ) -> Result<()> {
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(|source| self.database("beginning the installation transaction", source))?;
+        self.write_application(&transaction, application, statement)?;
+        self.write_installation(&transaction, installation)?;
+        transaction
+            .commit()
+            .map_err(|source| self.database("committing the installation", source))
     }
 
     /// Classifies a failed application insert by the constraint it violated.
@@ -1080,6 +1144,141 @@ mod tests {
                 .list_applications()
                 .expect("the applications are readable")
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_install_stores_the_application_and_its_installation() {
+        let directory = TempDir::new().expect("a temporary directory");
+        let library = library(&directory);
+        let application = application(
+            "app-1",
+            "Example",
+            "com.example.app",
+            "/Applications/Example.app",
+        );
+        let installation = installation("installation-1", Some("app-1"), "2026-11-09T10:00:00Z");
+
+        library
+            .record_install(&application, &installation)
+            .expect("the attempt is recorded as one unit");
+
+        assert_eq!(
+            library
+                .list_applications()
+                .expect("the applications are readable"),
+            vec![application]
+        );
+        assert_eq!(
+            library.histories("app-1").expect("the history is readable"),
+            vec![installation]
+        );
+    }
+
+    #[test]
+    fn a_rejected_installation_leaves_no_application_row() {
+        let directory = TempDir::new().expect("a temporary directory");
+        let library = library(&directory);
+        record_example(&library, "app-1");
+        library
+            .record_installation(&installation(
+                "installation-1",
+                Some("app-1"),
+                "2026-11-09T10:00:00Z",
+            ))
+            .expect("the first attempt is recorded");
+
+        // The second attempt names an application the catalogue does not hold yet
+        // and reuses an installation id it already holds, so only the second row
+        // of the pair can fail.
+        let error = library
+            .record_install(
+                &application(
+                    "app-2",
+                    "Other",
+                    "com.example.other",
+                    "/Applications/Other.app",
+                ),
+                &installation("installation-1", Some("app-2"), "2026-11-09T11:00:00Z"),
+            )
+            .expect_err("an installation id is unique");
+
+        assert!(
+            matches!(&error, Error::DuplicateId { table, id } if *table == "installations" && id == "installation-1"),
+            "unexpected error: {error:?}"
+        );
+        assert_eq!(
+            library
+                .list_applications()
+                .expect("the applications are readable")
+                .into_iter()
+                .map(|record| record.id)
+                .collect::<Vec<_>>(),
+            vec![String::from("app-1")],
+            "the application row of the rejected attempt is rolled back"
+        );
+        assert_eq!(
+            library
+                .histories("app-1")
+                .expect("the history is readable")
+                .len(),
+            1,
+            "the history of the untouched application keeps its one attempt"
+        );
+    }
+
+    #[test]
+    fn a_replace_install_overwrites_the_application_row_and_appends_the_attempt() {
+        let directory = TempDir::new().expect("a temporary directory");
+        let library = library(&directory);
+        library
+            .record_install(
+                &application(
+                    "app-1",
+                    "Example",
+                    "com.example.app",
+                    "/Applications/Example.app",
+                ),
+                &installation("installation-1", Some("app-1"), "2026-11-09T10:00:00Z"),
+            )
+            .expect("the first version is recorded");
+        let replacement = ApplicationRecord {
+            version: Some(String::from("7.0.0")),
+            installed_at: String::from("2026-11-10T00:00:00Z"),
+            ..application(
+                "app-1",
+                "Example",
+                "com.example.app",
+                "/Applications/Example.app",
+            )
+        };
+
+        library
+            .replace_install(
+                &replacement,
+                &installation("installation-2", Some("app-1"), "2026-11-10T00:00:00Z"),
+            )
+            .expect("the replacement is recorded");
+
+        assert_eq!(
+            library
+                .list_applications()
+                .expect("the applications are readable"),
+            vec![replacement],
+            "a replacement keeps one row and overwrites every mutable column"
+        );
+        let history: Vec<String> = library
+            .histories("app-1")
+            .expect("the history is readable")
+            .into_iter()
+            .map(|record| record.id)
+            .collect();
+        assert_eq!(
+            history,
+            vec![
+                String::from("installation-1"),
+                String::from("installation-2")
+            ]
         );
     }
 }

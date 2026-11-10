@@ -45,7 +45,8 @@
 //!    name (see [`destination_name`]).
 //! 7. Refuse an existing destination unless the request asked to replace it.
 //! 8. Move the staged bundle into place with a single `std::fs::rename`.
-//! 9. Record the application and the installation in the library.
+//! 9. Record the application and the installation in the library, in one
+//!    transaction.
 //! 10. Remove the staging area.
 //!
 //! # Replace policy
@@ -65,6 +66,13 @@
 //! with `result = "failed"`, no `application_id` and the error message as its
 //! `detail`. No destination, no partial bundle and no staging directory survive
 //! a failure: the staging guard removes its directory on every path out.
+//!
+//! The record of a failed attempt is itself a row, so `installation_id` must be
+//! unique per attempt. A caller that reuses it gets the original install error,
+//! because that is what failed, together with [`Error::FailureNotRecorded`]: the
+//! returned error states that the failed attempt could not be recorded and names
+//! the collision, so a silently missing history row is never reported as a
+//! different kind of failure.
 
 mod archive;
 mod bundle;
@@ -171,7 +179,9 @@ pub struct InstallRequest<'a> {
     pub library: &'a Library,
     /// Stable identifier of this attempt. It names the staging directory and is
     /// stored as the `installations.id` of the row this attempt writes, so the
-    /// caller must not reuse it for a second attempt.
+    /// caller must not reuse it for a second attempt: a reused id cannot be
+    /// recorded, and the error then states that the failed attempt was not
+    /// recorded (see [`Error::FailureNotRecorded`]).
     pub installation_id: &'a str,
     /// Whether an application already installed at the destination may be
     /// replaced. Without it an existing destination is an error.
@@ -205,10 +215,7 @@ pub fn install(request: &InstallRequest<'_>) -> Result<InstalledApplication> {
     let format = SourceFormat::identify(request.source)?;
     match attempt(request, format) {
         Ok(installed) => Ok(installed),
-        Err(error) => {
-            record_failure(request, format, &error)?;
-            Err(error)
-        }
+        Err(error) => Err(record_failure(request, format, error)),
     }
 }
 
@@ -315,9 +322,16 @@ fn attempt(request: &InstallRequest<'_>, format: SourceFormat) -> Result<Install
     })
 }
 
-/// Records one failed attempt, so an import that left nothing installed still
-/// tells the operator what was tried and why it failed.
-fn record_failure(request: &InstallRequest<'_>, format: SourceFormat, error: &Error) -> Result<()> {
+/// Records one failed attempt and returns the error that reports the failure.
+///
+/// An import that left nothing installed still tells the operator what was tried
+/// and why it failed, so the attempt is written as a `failed` history row. That
+/// row carries `installation_id`, which is unique per attempt: when the history
+/// already holds it the attempt cannot be recorded, and the returned error
+/// carries both causes — the install failure that stopped the attempt and the
+/// refusal that kept it out of the catalogue — instead of replacing the first
+/// with a library error the operator cannot act on.
+fn record_failure(request: &InstallRequest<'_>, format: SourceFormat, error: Error) -> Error {
     let record = InstallationRecord {
         id: request.installation_id.to_string(),
         // A failed attempt produced no application row to point at.
@@ -328,13 +342,16 @@ fn record_failure(request: &InstallRequest<'_>, format: SourceFormat, error: &Er
         detail: Some(error.to_string()),
         occurred_at: request.now.to_string(),
     };
-    request
-        .library
-        .record_installation(&record)
-        .map_err(|source| Error::Library {
-            operation: "recording a failed installation",
-            source: Box::new(source),
-        })
+    match request.library.record_installation(&record) {
+        Ok(()) => error,
+        Err(source) => Error::FailureNotRecorded {
+            install: Box::new(error),
+            record: Box::new(Error::Library {
+                operation: "recording a failed installation",
+                source: Box::new(source),
+            }),
+        },
+    }
 }
 
 /// Derives the destination directory name from the name the bundle declares.
@@ -459,7 +476,14 @@ fn architecture_name(architecture: Architecture) -> String {
     }
 }
 
-/// Stores the rows of a successful attempt.
+/// Stores the two rows of a successful attempt as one unit.
+///
+/// The application row and its installation row are written in one transaction,
+/// so the catalogue holds both or neither: a row the library refuses leaves no
+/// application behind that names a path the roll back then removes, and no
+/// history entry that names an application nothing stored. That is what lets
+/// [`roll_back`] put the file system back knowing the catalogue holds nothing of
+/// the attempt.
 ///
 /// A replacement overwrites the row of the application it replaces: the row id is
 /// the bundle identifier, so reinstalling an application must not add a second
@@ -471,21 +495,14 @@ fn store(
     installation: &InstallationRecord,
 ) -> Result<()> {
     let written = if request.replace {
-        request.library.replace_application(application)
+        request.library.replace_install(application, installation)
     } else {
-        request.library.record_application(application)
+        request.library.record_install(application, installation)
     };
     written.map_err(|source| Error::Library {
-        operation: "recording the application",
+        operation: "recording the installation",
         source: Box::new(source),
-    })?;
-    request
-        .library
-        .record_installation(installation)
-        .map_err(|source| Error::Library {
-            operation: "recording the installation",
-            source: Box::new(source),
-        })
+    })
 }
 
 /// Removes the freshly installed copy and puts the replaced one back.
@@ -1341,6 +1358,115 @@ mod tests {
             fixture.attempts().len(),
             2,
             "the refused attempt is recorded as failed"
+        );
+        fixture.assert_no_staging();
+    }
+
+    #[test]
+    fn a_reused_installation_id_leaves_no_application_row_of_the_second_bundle() {
+        let fixture = Fixture::new();
+        install(&request(
+            &fixture,
+            &example_bundle(fixture.directory.path()),
+            "installation-1",
+        ))
+        .expect("the first bundle is installed");
+
+        // A different application installed with the first attempt's id: the
+        // history already holds that id, so the second attempt cannot be
+        // recorded, and the catalogue must not keep the application row of the
+        // bundle the install then removes again.
+        let other_parent = fixture.directory.path().join("other");
+        create_dir(&other_parent);
+        let second = write_bundle(
+            &other_parent,
+            "Other.app",
+            "Other",
+            &plist(
+                Some("com.example.other"),
+                "Other",
+                Some("1.0"),
+                "Other",
+                None,
+            ),
+        );
+
+        let error = install(&request(&fixture, &second, "installation-1"))
+            .expect_err("the history already holds this installation id");
+
+        assert!(
+            error.to_string().contains("installation-1"),
+            "the error must name the reused id: {error}"
+        );
+        let rows = fixture.applications_rows();
+        assert_eq!(
+            rows.len(),
+            1,
+            "the catalogue keeps no application of the attempt it could not record: {rows:?}"
+        );
+        assert_eq!(rows[0].id, EXAMPLE);
+        assert!(
+            !fixture.applications.join("Other.app").exists(),
+            "the bundle of the failed attempt is removed again"
+        );
+        for row in &rows {
+            assert!(
+                row.bundle_path.exists(),
+                "the catalogue points at '{}', which is not installed",
+                row.bundle_path.display()
+            );
+        }
+        fixture.assert_no_staging();
+    }
+
+    #[test]
+    fn a_failure_that_cannot_be_recorded_keeps_the_original_error() {
+        let fixture = Fixture::new();
+        let source = example_bundle(fixture.directory.path());
+        install(&request(&fixture, &source, "installation-1"))
+            .expect("the first bundle is installed");
+
+        // The same source installed again without the replace policy fails on the
+        // existing destination, and it reuses the first attempt's id, so the
+        // failed row cannot be written either.
+        let error = install(&request(&fixture, &source, "installation-1"))
+            .expect_err("an installed application is not overwritten silently");
+
+        match &error {
+            Error::FailureNotRecorded { install, record } => {
+                assert!(
+                    matches!(install.as_ref(), Error::DestinationExists { .. }),
+                    "the original install failure is kept: {install:?}"
+                );
+                assert!(
+                    record.to_string().contains("installation-1"),
+                    "the record failure names the reused id: {record}"
+                );
+            }
+            other => panic!("expected a failure that could not be recorded, got {other:?}"),
+        }
+        let message = error.to_string();
+        assert!(
+            message.contains("Example.app"),
+            "the message keeps the original failure: {message}"
+        );
+        assert!(
+            message.contains("could not be recorded"),
+            "the message states that the attempt was not recorded: {message}"
+        );
+        assert_eq!(
+            std::error::Error::source(&error)
+                .expect("the original failure stays reachable")
+                .to_string(),
+            match &error {
+                Error::FailureNotRecorded { install, .. } => install.to_string(),
+                other => panic!("expected a failure that could not be recorded, got {other:?}"),
+            }
+        );
+        assert_eq!(
+            fixture.attempts().len(),
+            1,
+            "the unrecorded attempt leaves no second history row"
         );
         fixture.assert_no_staging();
     }

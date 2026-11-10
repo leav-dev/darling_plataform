@@ -96,6 +96,17 @@ pub enum Error {
         operation: &'static str,
         source: Box<dp_app_library::Error>,
     },
+    /// The attempt failed and its `failed` history row could not be written, so
+    /// the catalogue holds no trace of it.
+    ///
+    /// `install` is the failure that stopped the attempt, which is what the
+    /// operator has to act on, and `record` is why the attempt could not even be
+    /// recorded. The installation id is the value that usually collides: it must
+    /// be unique per attempt.
+    FailureNotRecorded {
+        install: Box<Error>,
+        record: Box<Error>,
+    },
 }
 
 impl fmt::Display for Error {
@@ -244,6 +255,11 @@ impl fmt::Display for Error {
             Self::Library { operation, source } => {
                 write!(f, "cannot {operation} in the application library: {source}")
             }
+            Self::FailureNotRecorded { install, record } => write!(
+                f,
+                "{install}; the failed attempt could not be recorded in the application library: \
+                 {record}"
+            ),
         }
     }
 }
@@ -256,6 +272,7 @@ impl std::error::Error for Error {
             Self::ArchiveUnreadable { source, .. } => Some(source),
             Self::RestoreFailed { source, .. } => Some(source),
             Self::Library { source, .. } => Some(source.as_ref()),
+            Self::FailureNotRecorded { install, .. } => Some(install.as_ref()),
             _ => None,
         }
     }
@@ -350,6 +367,45 @@ mod tests {
 
         assert!(message.contains("installation-1"), "message: {message}");
         assert!(message.contains(".app"), "message: {message}");
+    }
+
+    #[test]
+    fn a_failure_that_could_not_be_recorded_names_both_causes() {
+        let install = Error::DestinationExists {
+            path: PathBuf::from("/Applications/Example.app"),
+        };
+        let expected_install = install.to_string();
+        let error = Error::FailureNotRecorded {
+            install: Box::new(install),
+            record: Box::new(Error::Library {
+                operation: "recording a failed installation",
+                source: Box::new(dp_app_library::Error::DuplicateId {
+                    table: "installations",
+                    id: String::from("installation-1"),
+                }),
+            }),
+        };
+
+        let message = error.to_string();
+        assert!(
+            message.starts_with(&expected_install),
+            "the original failure comes first: {message}"
+        );
+        assert!(
+            message.contains("could not be recorded"),
+            "the message says the attempt was not recorded: {message}"
+        );
+        assert!(
+            message.contains("installation-1"),
+            "the message names why it could not be recorded: {message}"
+        );
+        assert_eq!(
+            std::error::Error::source(&error)
+                .expect("the original failure stays reachable")
+                .to_string(),
+            expected_install,
+            "source() is the failure that stopped the attempt"
+        );
     }
 
     #[test]
