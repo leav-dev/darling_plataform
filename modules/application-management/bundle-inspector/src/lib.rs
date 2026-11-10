@@ -3,12 +3,14 @@
 //! Responsibility: read a `.app` bundle without running it and extract
 //! `CFBundleIdentifier`, name, display name, version, executable, icon,
 //! `LSMinimumSystemVersion`, Mach-O architectures and the referenced frameworks
-//! and resources.
+//! and resources, plus the dynamic libraries and declared minimum macOS version
+//! its load commands name.
 //!
 //! Not responsible for: executing the binary, installing anything, or deciding
 //! compatibility. Every path declared by the bundle must be proven to stay
 //! inside the bundle, and the declared executable must be shown to exist before
-//! its metadata is trusted. `Info.plist` and Mach-O headers are untrusted input.
+//! its metadata is trusted. `Info.plist` and Mach-O headers and load commands
+//! are untrusted input.
 //!
 //! # Reporting rules
 //!
@@ -31,6 +33,10 @@
 //! * Frameworks are the direct `Contents/Frameworks/*.framework` entries and
 //!   resources are the direct children of `Contents/Resources`; both are
 //!   bundle-relative, sorted and de-duplicated, and neither is recursive.
+//! * [`macho::requirements`] reports what the executable's load commands declare
+//!   — its dylibs and its minimum macOS version — verbatim and sorted; it never
+//!   resolves an install name and never decides whether anything can be
+//!   satisfied.
 //! * Enums serialize as `snake_case` machine names, and an absent optional value
 //!   is omitted instead of serialized as `null`, matching the hardware report:
 //!   one rule for every JSON document this platform emits.
@@ -49,7 +55,7 @@ use plist::{Dictionary, Value};
 use serde::Serialize;
 
 pub use error::{Error, Result};
-pub use macho::Architecture;
+pub use macho::{Architecture, BinaryRequirements, requirements};
 
 /// Directory that holds every part of a bundle. Each path below is joined one
 /// component at a time, so the separators always match the host.

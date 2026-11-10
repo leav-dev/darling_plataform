@@ -82,6 +82,10 @@ pub enum Error {
     /// The universal header is well-formed enough to read the architecture
     /// table but describes slices the file cannot hold.
     MachOInvalidFat { path: PathBuf, reason: String },
+    /// A Mach-O load command is malformed: its size cannot hold the structure it
+    /// declares, it runs past the `sizeofcmds` its header declares, or the name
+    /// it points at lies outside the command.
+    MachOInvalidLoadCommand { path: PathBuf, reason: String },
 }
 
 impl fmt::Display for Error {
@@ -198,13 +202,18 @@ impl fmt::Display for Error {
                 found,
             } => write!(
                 f,
-                "the Mach-O file '{}' ends after {found} bytes, but its header needs {needed}; \
-                 the executable is truncated",
+                "the Mach-O data in '{}' ends after {found} bytes, but its header and load \
+                 commands need {needed}; the executable is truncated",
                 path.display()
             ),
             Self::MachOInvalidFat { path, reason } => write!(
                 f,
                 "the universal header of '{}' is invalid: {reason}; the executable is corrupt",
+                path.display()
+            ),
+            Self::MachOInvalidLoadCommand { path, reason } => write!(
+                f,
+                "the Mach-O load commands of '{}' are invalid: {reason}; the executable is corrupt",
                 path.display()
             ),
         }
