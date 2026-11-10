@@ -22,6 +22,25 @@ INSERT INTO applications (
     installation_type, installed_at, installation_status
 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)";
 
+/// Every mutable column of an existing row is overwritten, so a replacement
+/// never keeps the version, the icon or the timestamp of the row it replaced.
+const REPLACE_APPLICATION: &str = "\
+INSERT INTO applications (
+    id, bundle_id, name, version, bundle_path, executable_path, icon_path, architecture,
+    installation_type, installed_at, installation_status
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+ON CONFLICT(id) DO UPDATE SET
+    bundle_id = excluded.bundle_id,
+    name = excluded.name,
+    version = excluded.version,
+    bundle_path = excluded.bundle_path,
+    executable_path = excluded.executable_path,
+    icon_path = excluded.icon_path,
+    architecture = excluded.architecture,
+    installation_type = excluded.installation_type,
+    installed_at = excluded.installed_at,
+    installation_status = excluded.installation_status";
+
 const SELECT_APPLICATIONS: &str = "\
 SELECT id, bundle_id, name, version, bundle_path, executable_path, icon_path, architecture,
        installation_type, installed_at, installation_status
@@ -117,6 +136,46 @@ impl Library {
         self.connection
             .execute(
                 INSERT_APPLICATION,
+                params![
+                    record.id,
+                    record.bundle_id,
+                    record.name,
+                    record.version,
+                    bundle_path,
+                    executable_path,
+                    icon_path,
+                    record.architecture,
+                    record.installation_type,
+                    record.installed_at,
+                    record.installation_status,
+                ],
+            )
+            .map(|_| ())
+            .map_err(|error| self.application_insert_error(record, error))
+    }
+
+    /// Stores one application, replacing the row its `id` already names.
+    ///
+    /// The whole row is written: a replacement carries the new name, version,
+    /// paths, architecture, installation type, timestamp and status, so no value
+    /// of the overwritten row survives. An `id` the catalogue does not hold is
+    /// inserted, so the installer can use one call whether or not the previous
+    /// installation is still registered.
+    ///
+    /// The pair (`bundle_id`, `bundle_path`) is still unique: a replacement that
+    /// would collide with a row of another `id` is rejected with
+    /// [`Error::BundlePathTaken`], and the existing rows are left untouched.
+    pub fn replace_application(&self, record: &ApplicationRecord) -> Result<()> {
+        let bundle_path = text_path("bundle_path", &record.bundle_path)?;
+        let executable_path = text_path("executable_path", &record.executable_path)?;
+        let icon_path = match &record.icon_path {
+            Some(path) => Some(text_path("icon_path", path)?),
+            None => None,
+        };
+
+        self.connection
+            .execute(
+                REPLACE_APPLICATION,
                 params![
                     record.id,
                     record.bundle_id,
@@ -746,6 +805,116 @@ mod tests {
                 .expect("the applications are readable")
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn a_replacement_overwrites_every_mutable_column_of_the_named_row() {
+        let directory = TempDir::new().expect("a temporary directory");
+        let library = library(&directory);
+        library
+            .record_application(&application(
+                "app-1",
+                "Example",
+                "com.example.app",
+                "/Applications/Example.app",
+            ))
+            .expect("the application is recorded");
+        let replacement = ApplicationRecord {
+            name: String::from("Example Renamed"),
+            version: Some(String::from("7.0.0")),
+            bundle_path: PathBuf::from("/Applications/Example 7.app"),
+            executable_path: PathBuf::from("/Applications/Example 7.app/Contents/MacOS/Example"),
+            icon_path: None,
+            architecture: Some(String::from("arm64")),
+            installation_type: String::from("zip"),
+            installed_at: String::from("2026-11-10T00:00:00Z"),
+            installation_status: String::from("installed"),
+            ..application(
+                "app-1",
+                "Example",
+                "com.example.app",
+                "/Applications/Example.app",
+            )
+        };
+
+        library
+            .replace_application(&replacement)
+            .expect("the row is replaced");
+
+        assert_eq!(
+            library
+                .list_applications()
+                .expect("the applications are readable"),
+            vec![replacement],
+            "the row keeps no column of the application it replaced"
+        );
+    }
+
+    #[test]
+    fn a_replacement_of_an_unknown_id_is_inserted() {
+        let directory = TempDir::new().expect("a temporary directory");
+        let library = library(&directory);
+        let record = application(
+            "app-1",
+            "Example",
+            "com.example.app",
+            "/Applications/Example.app",
+        );
+
+        library
+            .replace_application(&record)
+            .expect("an unheld id is inserted");
+
+        assert_eq!(
+            library
+                .list_applications()
+                .expect("the applications are readable"),
+            vec![record]
+        );
+    }
+
+    #[test]
+    fn a_replacement_that_collides_with_another_row_is_rejected() {
+        let directory = TempDir::new().expect("a temporary directory");
+        let library = library(&directory);
+        library
+            .record_application(&application(
+                "app-1",
+                "Example",
+                "com.example.app",
+                "/Applications/Example.app",
+            ))
+            .expect("the first application is recorded");
+        library
+            .record_application(&application(
+                "app-2",
+                "Other",
+                "com.example.app",
+                "/Applications/Other.app",
+            ))
+            .expect("the second application is recorded");
+
+        let error = library
+            .replace_application(&application(
+                "app-2",
+                "Other",
+                "com.example.app",
+                "/Applications/Example.app",
+            ))
+            .expect_err("the bundle path is unique across rows");
+
+        assert!(
+            matches!(&error, Error::BundlePathTaken { bundle_path, .. } if bundle_path == &PathBuf::from("/Applications/Example.app")),
+            "unexpected error: {error:?}"
+        );
+        assert_eq!(
+            library
+                .list_applications()
+                .expect("the applications are readable")
+                .len(),
+            2,
+            "the rejected replacement leaves both rows untouched"
         );
     }
 

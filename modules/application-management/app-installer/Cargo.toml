@@ -9,3 +9,14 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+dp-app-library = { path = "../app-library" }
+dp-bundle-inspector = { path = "../bundle-inspector" }
+# Only the stored and deflate methods are supported, both in pure Rust: the
+# installer must not add a system dependency to the package. DMG, PKG and .xip
+# archives are out of scope for this cut.
+zip = { version = "9.5.0", default-features = false, features = [
+    "deflate-flate2-zlib-rs",
+] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
