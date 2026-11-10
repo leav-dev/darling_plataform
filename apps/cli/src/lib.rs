@@ -11,15 +11,20 @@
 //! process environment: resolution and Darling access stay reproducible in tests.
 
 use std::ffi::OsStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use dp_app_installer::{InstallRequest, InstalledApplication};
+use dp_app_library::{ApplicationRecord, Library};
+use dp_bundle_inspector::{Architecture, BundleMetadata};
 use dp_hardware_intelligence::{
     DiagnosticLevel, DisplayStatus, Distribution, HardwareReport, HostSource, Libc, LibcFamily,
     Provider, ScanStatus,
 };
 use dp_shared_prefix::{
-    CheckStatus, CommandOutcome, Darling, Inspection, Phase, PrefixEnv, PrefixLocation,
+    CheckStatus, CommandOutcome, Darling, Inspection, Phase, PrefixEnv, PrefixLocation, PrefixLock,
     PrefixManager, SystemDarling, Validation,
 };
 
@@ -33,10 +38,14 @@ Commands:
   dp prefix start     Ensure the environment is up, creating the prefix on first use
   dp prefix stop      Shut the environment down; refuses while managed instances run
   dp hardware scan    Describe the host: system, CPU, memory, GPUs and displays
+  dp app inspect      Inspect a .app bundle and print the metadata it declares
+  dp app install      Install a .app bundle or .zip archive into the DPREFIX
+  dp app list         List the applications the catalogue holds
 
 Options:
-      --json                      Print the command outcome as JSON (status, validate, scan)
+      --json                      Print the command outcome as JSON (status, validate, scan, app)
       --active-instances <count>  Managed instances still running (stop only, default 0)
+      --replace                   Replace an installed application (app install only)
   -h, --help                      Print this help text
   -V, --version                   Print version information
 ";
@@ -66,6 +75,32 @@ Subcommands:
 Options:
       --json    Print the report as JSON
 ";
+
+/// Text shown when `dp app` is called without a usable subcommand.
+const APP_USAGE: &str = "\
+usage: dp app <subcommand> [options]
+
+Subcommands:
+  inspect <path>  Inspect a .app bundle and print the metadata it declares
+  install <path>  Install a .app bundle or .zip archive into the DPREFIX
+  list            List the applications the catalogue holds
+
+Options:
+      --json     Print the outcome as JSON (inspect, install, list)
+      --replace  Replace an installed application (install only)
+";
+
+/// Name of the SQLite catalogue inside the platform data directory.
+///
+/// The catalogue lives with the platform's own files, outside the DPREFIX, so
+/// Darling's overlay can never shadow it.
+const CATALOGUE_FILE: &str = "library.sqlite3";
+
+/// Directory inside the DPREFIX that installed bundles live in.
+const APPLICATIONS_DIR: &str = "Applications";
+
+/// Installation identifier used when the source names no usable bundle name.
+const UNNAMED_APPLICATION: &str = "application";
 
 /// Rendered result of one command invocation.
 ///
@@ -185,6 +220,7 @@ where
     let mut positionals: Vec<String> = Vec::new();
     let mut json = false;
     let mut active_instances: Option<u32> = None;
+    let mut replace = false;
     let mut index = 0;
 
     while index < argv.len() {
@@ -194,6 +230,7 @@ where
             "-h" | "--help" => return Response::output(USAGE),
             "-V" | "--version" => return Response::output(format!("{}\n", version_line())),
             "--json" => json = true,
+            "--replace" => replace = true,
             "--active-instances" => {
                 let Some(value) = argv.get(index + 1) else {
                     return Response::usage_error("option `--active-instances` requires a count");
@@ -226,8 +263,9 @@ where
     };
 
     match command {
-        "prefix" => execute_prefix(&positionals[1..], json, active_instances, env),
-        "hardware" => execute_hardware(&positionals[1..], json, active_instances, env),
+        "prefix" => execute_prefix(&positionals[1..], json, active_instances, replace, env),
+        "hardware" => execute_hardware(&positionals[1..], json, active_instances, replace, env),
+        "app" => execute_app(&positionals[1..], json, active_instances, replace, env),
         other => Response::usage_error(format!("unknown command `{other}`")),
     }
 }
@@ -237,10 +275,14 @@ fn execute_hardware(
     args: &[String],
     json: bool,
     active_instances: Option<u32>,
+    replace: bool,
     env: &CliEnv,
 ) -> Response {
     let Some(subcommand) = args.first().map(String::as_str) else {
-        return Response::usage_error_with("a `dp hardware` subcommand is required", HARDWARE_USAGE);
+        return Response::usage_error_with(
+            "a `dp hardware` subcommand is required",
+            HARDWARE_USAGE,
+        );
     };
 
     if let Some(extra) = args.get(1) {
@@ -253,6 +295,10 @@ fn execute_hardware(
     match subcommand {
         "scan" if active_instances.is_some() => Response::usage_error_with(
             "`--active-instances` does not apply to `dp hardware scan`",
+            HARDWARE_USAGE,
+        ),
+        "scan" if replace => Response::usage_error_with(
+            "`--replace` does not apply to `dp hardware scan`",
             HARDWARE_USAGE,
         ),
         "scan" => hardware_scan(env, json),
@@ -283,9 +329,9 @@ fn hardware_scan(env: &CliEnv, json: bool) -> Response {
                 stdout: format!("{document}\n"),
                 stderr: String::new(),
             },
-            Err(error) => {
-                Response::failure(format!("cannot render the hardware report as JSON: {error}"))
-            }
+            Err(error) => Response::failure(format!(
+                "cannot render the hardware report as JSON: {error}"
+            )),
         };
     }
 
@@ -296,11 +342,361 @@ fn hardware_scan(env: &CliEnv, json: bool) -> Response {
     }
 }
 
+/// Dispatches the `dp app` subcommands.
+///
+/// `--active-instances` counts managed instances, which only `dp prefix stop`
+/// acts on, so every `app` subcommand refuses it. The options a subcommand does
+/// not use are refused the same way instead of being silently ignored.
+fn execute_app(
+    args: &[String],
+    json: bool,
+    active_instances: Option<u32>,
+    replace: bool,
+    env: &CliEnv,
+) -> Response {
+    let Some(subcommand) = args.first().map(String::as_str) else {
+        return Response::usage_error_with("a `dp app` subcommand is required", APP_USAGE);
+    };
+
+    if active_instances.is_some() {
+        return Response::usage_error_with(
+            format!("`--active-instances` does not apply to `dp app {subcommand}`"),
+            APP_USAGE,
+        );
+    }
+
+    match subcommand {
+        "inspect" if replace => {
+            Response::usage_error_with("`--replace` does not apply to `dp app inspect`", APP_USAGE)
+        }
+        "inspect" => match app_path_argument(args, subcommand) {
+            Ok(bundle) => app_inspect(Path::new(bundle), json),
+            Err(response) => response,
+        },
+        "install" => match app_path_argument(args, subcommand) {
+            Ok(source) => app_install(Path::new(source), replace, json, env),
+            Err(response) => response,
+        },
+        "list" if replace => {
+            Response::usage_error_with("`--replace` does not apply to `dp app list`", APP_USAGE)
+        }
+        "list" => {
+            if let Some(extra) = args.get(1) {
+                return Response::usage_error_with(
+                    format!("unexpected argument `{extra}` for `dp app list`"),
+                    APP_USAGE,
+                );
+            }
+            app_list(json, env)
+        }
+        other => {
+            Response::usage_error_with(format!("unknown `dp app` subcommand `{other}`"), APP_USAGE)
+        }
+    }
+}
+
+/// Reads the single `<path>` argument of `dp app inspect` and `dp app install`.
+///
+/// The argument loop consumes every option before this runs, so a value that
+/// still starts with `-` was meant as a path and cannot be one: it is reported
+/// as a missing path instead of being handed to the inspector or the installer.
+fn app_path_argument<'a>(args: &'a [String], subcommand: &str) -> Result<&'a str, Response> {
+    let Some(path) = args.get(1) else {
+        return Err(Response::usage_error_with(
+            format!("`dp app {subcommand}` requires the path of the bundle to read"),
+            APP_USAGE,
+        ));
+    };
+    if path.starts_with('-') {
+        return Err(Response::usage_error_with(
+            format!("`dp app {subcommand}` needs a path, but got the option `{path}`"),
+            APP_USAGE,
+        ));
+    }
+    if let Some(extra) = args.get(2) {
+        return Err(Response::usage_error_with(
+            format!("unexpected argument `{extra}` for `dp app {subcommand}`"),
+            APP_USAGE,
+        ));
+    }
+    Ok(path.as_str())
+}
+
+/// Renders `dp app inspect`.
+///
+/// Read-only by construction: the inspector only reads the bundle, so this
+/// command never resolves the catalogue and never touches the platform data
+/// directory, the lock file or the prefix.
+fn app_inspect(bundle: &Path, json: bool) -> Response {
+    let metadata = match dp_bundle_inspector::inspect(bundle) {
+        Ok(metadata) => metadata,
+        Err(error) => return Response::failure(error),
+    };
+
+    if json {
+        return match serde_json::to_string(&metadata) {
+            Ok(document) => Response::output(format!("{document}\n")),
+            Err(error) => Response::failure(format!(
+                "cannot render the bundle metadata as JSON: {error}"
+            )),
+        };
+    }
+
+    Response::output(render_bundle(&metadata))
+}
+
+/// Renders `dp app install`.
+///
+/// The prefix location and the catalogue are resolved here, and the write lock
+/// the Shared Prefix Manager exposes is taken before anything is written, so an
+/// installation cannot run beside another platform operation. Everything else —
+/// the staging area, `<prefix>/Applications`, every validation and the two
+/// catalogue rows — belongs to the installer, which is why this command creates
+/// no directory of its own: a source the installer refuses leaves the prefix
+/// untouched.
+fn app_install(source: &Path, replace: bool, json: bool, env: &CliEnv) -> Response {
+    let location = match PrefixLocation::resolve(&env.prefix) {
+        Ok(location) => location,
+        Err(error) => return Response::failure(error),
+    };
+    let _lock = match PrefixLock::try_exclusive(&location.lock_path()) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            return Response::failure(dp_shared_prefix::Error::PrefixBusy {
+                path: location.lock_path(),
+            });
+        }
+        Err(error) => return Response::failure(error),
+    };
+    let library = match Library::open(&catalogue_path(&location)) {
+        Ok(library) => library,
+        Err(error) => return Response::failure(error),
+    };
+
+    let applications_dir = location.path().join(APPLICATIONS_DIR);
+    let installation_id = attempt_id(source);
+    let now = dp_app_library::now_utc();
+    let request = InstallRequest {
+        source,
+        applications_dir: &applications_dir,
+        library: &library,
+        installation_id: installation_id.as_str(),
+        replace,
+        now: now.as_str(),
+    };
+    let installed = match dp_app_installer::install(&request) {
+        Ok(installed) => installed,
+        Err(error) => return Response::failure(error),
+    };
+
+    if json {
+        return match json_install(&installed) {
+            Ok(document) => Response::output(document),
+            Err(error) => Response::failure(format!(
+                "cannot render the installed application as JSON: {error}"
+            )),
+        };
+    }
+
+    Response::output(render_install(&installed))
+}
+
+/// Renders `dp app list`.
+///
+/// The catalogue is opened because listing it is the command's whole purpose; a
+/// missing catalogue is created empty, which is why an empty list is a success.
+fn app_list(json: bool, env: &CliEnv) -> Response {
+    let location = match PrefixLocation::resolve(&env.prefix) {
+        Ok(location) => location,
+        Err(error) => return Response::failure(error),
+    };
+    let library = match Library::open(&catalogue_path(&location)) {
+        Ok(library) => library,
+        Err(error) => return Response::failure(error),
+    };
+    let applications = match library.list_applications() {
+        Ok(applications) => applications,
+        Err(error) => return Response::failure(error),
+    };
+
+    if json {
+        let rows = match serde_json::to_value(&applications) {
+            Ok(rows) => rows,
+            Err(error) => {
+                return Response::failure(format!(
+                    "cannot render the application list as JSON: {error}"
+                ));
+            }
+        };
+        let document = serde_json::json!({ "applications": rows });
+        return Response::output(format!("{document}\n"));
+    }
+
+    Response::output(render_applications(&applications))
+}
+
+/// Renders the bundle metadata as `key: value` lines plus one per framework and
+/// resource, the same summary style `dp hardware scan` prints.
+fn render_bundle(metadata: &BundleMetadata) -> String {
+    let mut lines = vec![
+        format!("path: {}", metadata.path.display()),
+        format!("bundle_id: {}", metadata.bundle_id),
+        format!("name: {}", metadata.name),
+    ];
+    if let Some(display_name) = &metadata.display_name {
+        lines.push(format!("display_name: {display_name}"));
+    }
+    if let Some(version) = &metadata.version {
+        lines.push(format!("version: {version}"));
+    }
+    lines.push(format!("executable: {}", metadata.executable));
+    lines.push(format!(
+        "executable_path: {}",
+        metadata.executable_path.display()
+    ));
+    if let Some(icon) = &metadata.icon_file {
+        lines.push(format!("icon_file: {icon}"));
+    }
+    if let Some(minimum) = &metadata.minimum_system_version {
+        lines.push(format!("minimum_system_version: {minimum}"));
+    }
+    lines.push(format!(
+        "architectures: {}",
+        architecture_list(&metadata.architectures)
+    ));
+    lines.extend(entries(&metadata.frameworks, "framework"));
+    lines.extend(entries(&metadata.resources, "resource"));
+
+    joined_lines(lines)
+}
+
+/// One `<role>: <path>` line per entry, or a single `<role>: none`.
+fn entries(paths: &[String], role: &str) -> Vec<String> {
+    if paths.is_empty() {
+        return vec![format!("{role}: none")];
+    }
+    paths.iter().map(|path| format!("{role}: {path}")).collect()
+}
+
+/// Renders what one installation produced, starting with where it landed.
+fn render_install(installed: &InstalledApplication) -> String {
+    let metadata = &installed.metadata;
+    let mut lines = vec![
+        format!("installed: {}", installed.path.display()),
+        format!("installation_id: {}", installed.installation_id),
+        format!("format: {}", installed.format),
+        format!("bundle_id: {}", metadata.bundle_id),
+        format!("name: {}", metadata.name),
+    ];
+    if let Some(version) = &metadata.version {
+        lines.push(format!("version: {version}"));
+    }
+    lines.push(format!(
+        "architectures: {}",
+        architecture_list(&metadata.architectures)
+    ));
+
+    joined_lines(lines)
+}
+
+/// Builds the installation report as one object: the attempt, where it landed
+/// and the metadata of the installed copy.
+///
+/// Both paths go through `to_value` so a path this build cannot represent as
+/// JSON text is reported as a failure instead of being silently dropped.
+fn json_install(installed: &InstalledApplication) -> Result<String, serde_json::Error> {
+    let path = serde_json::to_value(&installed.path)?;
+    let metadata = serde_json::to_value(&installed.metadata)?;
+    let document = serde_json::json!({
+        "installation_id": installed.installation_id.as_str(),
+        "path": path,
+        "format": installed.format.as_str(),
+        "metadata": metadata,
+    });
+
+    Ok(format!("{document}\n"))
+}
+
+/// Renders the catalogue as one `application:` line per row, in catalogue order.
+///
+/// An empty catalogue reads `applications: none` instead of printing nothing, so
+/// the output keeps its single trailing newline and never looks like a command
+/// that produced no output at all.
+fn render_applications(applications: &[ApplicationRecord]) -> String {
+    if applications.is_empty() {
+        return String::from("applications: none\n");
+    }
+    joined_lines(applications.iter().map(describe_application).collect())
+}
+
+/// One application as `application:` followed by space-separated `field=value`
+/// pairs, which stays readable when a name or a path contains spaces.
+fn describe_application(application: &ApplicationRecord) -> String {
+    let mut fields = vec![
+        format!("name={}", application.name),
+        format!("bundle_id={}", application.bundle_id),
+    ];
+    if let Some(version) = &application.version {
+        fields.push(format!("version={version}"));
+    }
+    if let Some(architecture) = &application.architecture {
+        fields.push(format!("architecture={architecture}"));
+    }
+    fields.push(format!("status={}", application.installation_status));
+    fields.push(format!("path={}", application.bundle_path.display()));
+
+    format!("application: {}", fields.join(" "))
+}
+
+/// Joins the reported architectures with the names JSON prints, or `none`.
+fn architecture_list(architectures: &[Architecture]) -> String {
+    if architectures.is_empty() {
+        return String::from("none");
+    }
+    architectures
+        .iter()
+        .map(|architecture| json_enum_name(serde_json::to_value(architecture)))
+        .collect::<Vec<String>>()
+        .join(",")
+}
+
+/// The catalogue of this platform: one SQLite file in the platform data
+/// directory, derived from the same location the prefix is resolved from so the
+/// two can never disagree.
+fn catalogue_path(location: &PrefixLocation) -> PathBuf {
+    location.data_dir().join(CATALOGUE_FILE)
+}
+
+/// Derives the identifier one installation attempt is recorded under.
+///
+/// A failed attempt is a catalogue row too and `installations.id` is unique, so
+/// the value must differ between attempts: the source name keeps the history
+/// readable, the process id separates concurrent commands, the clock separates
+/// runs of the same command and the counter covers what the other three cannot —
+/// two attempts from one process within the same second, which is exactly how a
+/// caller installs the same bundle twice.
+fn attempt_id(source: &Path) -> String {
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    let name = source
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(UNNAMED_APPLICATION);
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+
+    format!("{name}-{seconds}-{}-{sequence}", std::process::id())
+}
+
 /// Dispatches the `dp prefix` subcommands.
 fn execute_prefix(
     args: &[String],
     json: bool,
     active_instances: Option<u32>,
+    replace: bool,
     env: &CliEnv,
 ) -> Response {
     let Some(subcommand) = args.first().map(String::as_str) else {
@@ -317,6 +713,10 @@ fn execute_prefix(
     match subcommand {
         "status" | "validate" if active_instances.is_some() => Response::usage_error_with(
             format!("`--active-instances` does not apply to `dp prefix {subcommand}`"),
+            PREFIX_USAGE,
+        ),
+        "status" | "validate" | "start" | "stop" if replace => Response::usage_error_with(
+            format!("`--replace` does not apply to `dp prefix {subcommand}`"),
             PREFIX_USAGE,
         ),
         "start" | "stop" if json => Response::usage_error_with(
@@ -802,13 +1202,27 @@ mod tests {
                 .stdout
                 .contains("system.distribution: ubuntu 24.04 (Ubuntu 24.04.1 LTS)\n")
         );
-        assert!(response.stdout.contains("system.kernel: 6.8.0-45-generic\n"));
-        assert!(response.stdout.contains("cpu.cores: 1 logical, 8 physical, 1 socket(s)\n"));
+        assert!(
+            response
+                .stdout
+                .contains("system.kernel: 6.8.0-45-generic\n")
+        );
+        assert!(
+            response
+                .stdout
+                .contains("cpu.cores: 1 logical, 8 physical, 1 socket(s)\n")
+        );
         assert!(response.stdout.contains("memory.total: 31.1 GiB\n"));
-        assert!(response.stdout.contains(
-            "gpu: 0000:03:00.0 0x1002:0x15bf class 0x030000 driver amdgpu\n"
-        ));
-        assert!(response.stdout.contains("display: card0-eDP-1 connected enabled 2880x1800\n"));
+        assert!(
+            response
+                .stdout
+                .contains("gpu: 0000:03:00.0 0x1002:0x15bf class 0x030000 driver amdgpu\n")
+        );
+        assert!(
+            response
+                .stdout
+                .contains("display: card0-eDP-1 connected enabled 2880x1800\n")
+        );
         assert!(
             response
                 .stdout
@@ -1373,6 +1787,563 @@ mod tests {
                 .contains("unrecognized option `--bogus`"),
             "unexpected stderr: {}",
             unknown_option.stderr
+        );
+    }
+
+    /// `CPU_TYPE_X86_64`, as `<mach/machine.h>` defines it.
+    const CPU_TYPE_X86_64: u32 = 0x0100_0007;
+
+    /// An `Info.plist` that declares every key the bundle inspector reports.
+    const EXAMPLE_PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.example.example</string>
+	<key>CFBundleName</key>
+	<string>Example</string>
+	<key>CFBundleDisplayName</key>
+	<string>Example App</string>
+	<key>CFBundleVersion</key>
+	<string>1.2.3</string>
+	<key>CFBundleExecutable</key>
+	<string>Example</string>
+	<key>CFBundleIconFile</key>
+	<string>Example.icns</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.13</string>
+</dict>
+</plist>
+"#;
+
+    /// A thin 64-bit little-endian Mach-O header for `cputype`, with no load
+    /// commands: enough for the inspector to report the architecture.
+    fn thin_macho(cputype: u32) -> Vec<u8> {
+        let mut bytes = vec![0xcf, 0xfa, 0xed, 0xfe];
+        bytes.extend_from_slice(&cputype.to_le_bytes());
+        bytes.extend_from_slice(&3u32.to_le_bytes()); // cpusubtype: CPU_SUBTYPE_ANY
+        bytes.extend_from_slice(&2u32.to_le_bytes()); // filetype: MH_EXECUTE
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // ncmds
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // sizeofcmds
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // flags
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // reserved
+        bytes
+    }
+
+    /// Writes `bytes` to `path`, creating the directories it needs.
+    fn write_fixture(path: &Path, bytes: &[u8]) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create the fixture directory");
+        }
+        std::fs::write(path, bytes).expect("write the fixture file");
+    }
+
+    /// A well-formed `Example.app` below `root`: the keys [`EXAMPLE_PLIST`]
+    /// declares, a Mach-O executable and the icon it names.
+    fn example_bundle(root: &Path) -> PathBuf {
+        let bundle = root.join("Example.app");
+        write_fixture(
+            &bundle.join("Contents").join("Info.plist"),
+            EXAMPLE_PLIST.as_bytes(),
+        );
+        write_fixture(
+            &bundle.join("Contents").join("MacOS").join("Example"),
+            &thin_macho(CPU_TYPE_X86_64),
+        );
+        write_fixture(
+            &bundle
+                .join("Contents")
+                .join("Resources")
+                .join("Example.icns"),
+            b"icns",
+        );
+        bundle
+    }
+
+    /// A fixture path as the argument a test hands to `execute`.
+    fn path_arg(path: &Path) -> &str {
+        path.to_str().expect("a temporary path is valid UTF-8")
+    }
+
+    /// An isolated environment without `XDG_DATA_HOME`, so the platform data
+    /// directory falls back to `$HOME/.local/share/darling-platform`.
+    fn env_without_xdg(root: &Path) -> CliEnv {
+        CliEnv {
+            prefix: PrefixEnv {
+                dprefix: Some(root.join("prefix").into_os_string()),
+                xdg_data_home: None,
+                home: Some(root.join("home").into_os_string()),
+            },
+            darling: Arc::new(FakeDarling),
+            host: Box::new(dp_hardware_intelligence::LinuxHost),
+        }
+    }
+
+    /// The catalogue the isolated environment resolves to.
+    fn catalogue(env: &CliEnv) -> PathBuf {
+        location(env).data_dir().join("library.sqlite3")
+    }
+
+    /// The catalogue rows the CLI wrote, read back through the library.
+    fn applications(env: &CliEnv) -> Vec<ApplicationRecord> {
+        Library::open(&catalogue(env))
+            .expect("the catalogue the CLI wrote opens")
+            .list_applications()
+            .expect("read the applications")
+    }
+
+    #[test]
+    fn app_inspect_renders_the_documented_text_lines() {
+        let (dir, env) = isolated();
+        let bundle = example_bundle(dir.path());
+
+        let response = execute(["app", "inspect", path_arg(&bundle)], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        assert_eq!(response.stderr, "");
+        let expected = joined_lines(vec![
+            format!("path: {}", bundle.display()),
+            String::from("bundle_id: com.example.example"),
+            String::from("name: Example"),
+            String::from("display_name: Example App"),
+            String::from("version: 1.2.3"),
+            String::from("executable: Example"),
+            format!(
+                "executable_path: {}",
+                bundle
+                    .join("Contents")
+                    .join("MacOS")
+                    .join("Example")
+                    .display()
+            ),
+            String::from("icon_file: Example.icns"),
+            String::from("minimum_system_version: 10.13"),
+            String::from("architectures: x86_64"),
+            String::from("framework: none"),
+            String::from("resource: Contents/Resources/Example.icns"),
+        ]);
+        assert_eq!(response.stdout, expected);
+    }
+
+    #[test]
+    fn app_inspect_json_emits_the_bundle_metadata() {
+        let (dir, env) = isolated();
+        let bundle = example_bundle(dir.path());
+
+        let response = execute(["app", "inspect", path_arg(&bundle), "--json"], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        assert_eq!(response.stderr, "");
+        assert!(response.stdout.ends_with('\n'));
+        let document = json_document(&response.stdout);
+        assert_eq!(document["path"].as_str(), Some(path_arg(&bundle)));
+        assert_eq!(document["bundle_id"].as_str(), Some("com.example.example"));
+        assert_eq!(document["name"].as_str(), Some("Example"));
+        assert_eq!(document["display_name"].as_str(), Some("Example App"));
+        assert_eq!(document["version"].as_str(), Some("1.2.3"));
+        assert_eq!(document["executable"].as_str(), Some("Example"));
+        assert_eq!(document["icon_file"].as_str(), Some("Example.icns"));
+        assert_eq!(document["minimum_system_version"].as_str(), Some("10.13"));
+        assert_eq!(document["architectures"][0].as_str(), Some("x86_64"));
+        assert_eq!(
+            document["resources"][0].as_str(),
+            Some("Contents/Resources/Example.icns")
+        );
+        assert!(
+            document["frameworks"].is_array(),
+            "frameworks is always a list: {}",
+            response.stdout
+        );
+    }
+
+    #[test]
+    fn app_inspect_creates_neither_the_prefix_nor_the_catalogue() {
+        let (dir, env) = isolated();
+        let bundle = example_bundle(dir.path());
+        let location = location(&env);
+
+        let response = execute(["app", "inspect", path_arg(&bundle)], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        assert!(
+            !location.path().exists(),
+            "inspect must not create the prefix"
+        );
+        assert!(
+            !location.data_dir().exists(),
+            "inspect must not create the platform data directory"
+        );
+        assert!(
+            !location.lock_path().exists(),
+            "inspect must not create the lock file"
+        );
+        assert!(
+            !dir.path().join("data").exists(),
+            "inspect must leave the data home absent"
+        );
+    }
+
+    #[test]
+    fn app_inspect_of_a_malformed_bundle_fails_with_code_1() {
+        let (dir, env) = isolated();
+        let bundle = dir.path().join("Broken.app");
+        write_fixture(&bundle.join("Contents").join("Info.plist"), b"not a plist");
+
+        let response = execute(["app", "inspect", path_arg(&bundle)], &env);
+
+        assert_eq!(response.code, 1);
+        assert_eq!(response.stdout, "");
+        assert!(
+            response.stderr.starts_with("error: "),
+            "unexpected stderr: {}",
+            response.stderr
+        );
+        assert!(
+            response.stderr.contains("Info.plist"),
+            "the failure must name the file: {}",
+            response.stderr
+        );
+    }
+
+    #[test]
+    fn app_without_a_subcommand_and_with_an_unknown_one_is_a_usage_error() {
+        let (dir, env) = isolated();
+        let bundle = example_bundle(dir.path());
+
+        let missing = execute(["app"], &env);
+        assert_eq!(missing.code, 2);
+        assert_eq!(missing.stdout, "");
+        assert!(
+            missing.stderr.contains("a `dp app` subcommand is required"),
+            "unexpected stderr: {}",
+            missing.stderr
+        );
+        assert!(missing.stderr.contains("usage: dp app <subcommand>"));
+
+        let unknown = execute(["app", "frobnicate"], &env);
+        assert_eq!(unknown.code, 2);
+        assert_eq!(unknown.stdout, "");
+        assert!(
+            unknown
+                .stderr
+                .contains("unknown `dp app` subcommand `frobnicate`"),
+            "unexpected stderr: {}",
+            unknown.stderr
+        );
+        assert!(unknown.stderr.contains("usage: dp app <subcommand>"));
+
+        let missing_path = execute(["app", "install"], &env);
+        assert_eq!(missing_path.code, 2);
+        assert_eq!(missing_path.stdout, "");
+        assert!(
+            missing_path.stderr.contains("requires the path"),
+            "unexpected stderr: {}",
+            missing_path.stderr
+        );
+
+        let extra = execute(["app", "list", path_arg(&bundle)], &env);
+        assert_eq!(extra.code, 2);
+        assert_eq!(extra.stdout, "");
+        assert!(
+            extra.stderr.contains("unexpected argument"),
+            "unexpected stderr: {}",
+            extra.stderr
+        );
+    }
+
+    #[test]
+    fn app_rejects_the_options_that_do_not_apply_to_the_subcommand() {
+        let (dir, env) = isolated();
+        let bundle = example_bundle(dir.path());
+        let path = path_arg(&bundle);
+
+        let cases: [(&[&str], &str); 7] = [
+            (
+                &["app", "inspect", path, "--replace"],
+                "`--replace` does not apply to `dp app inspect`",
+            ),
+            (
+                &["app", "list", "--replace"],
+                "`--replace` does not apply to `dp app list`",
+            ),
+            (
+                &["app", "list", "--active-instances", "1"],
+                "`--active-instances` does not apply to `dp app list`",
+            ),
+            (
+                &["app", "install", path, "--active-instances", "2"],
+                "`--active-instances` does not apply to `dp app install`",
+            ),
+            (
+                &["app", "inspect", path, "--active-instances", "0"],
+                "`--active-instances` does not apply to `dp app inspect`",
+            ),
+            (
+                &["prefix", "status", "--replace"],
+                "`--replace` does not apply to `dp prefix status`",
+            ),
+            (
+                &["hardware", "scan", "--replace"],
+                "`--replace` does not apply to `dp hardware scan`",
+            ),
+        ];
+
+        for (args, expected) in cases {
+            let response = execute(args, &env);
+
+            assert_eq!(response.code, 2, "{args:?} must be a usage error");
+            assert_eq!(response.stdout, "", "{args:?} must not print to stdout");
+            assert!(
+                response.stderr.contains(expected),
+                "{args:?} must explain `{expected}`: {}",
+                response.stderr
+            );
+        }
+        assert!(
+            !location(&env).data_dir().exists(),
+            "a rejected option must not create the platform data directory"
+        );
+    }
+
+    #[test]
+    fn the_usage_block_lists_the_app_commands() {
+        for command in ["dp app inspect", "dp app install", "dp app list"] {
+            assert!(USAGE.contains(command), "USAGE must list `{command}`");
+        }
+
+        let (_dir, env) = isolated();
+        let response = execute(["--help"], &env);
+
+        assert_eq!(response.code, 0);
+        for command in ["dp app inspect", "dp app install", "dp app list"] {
+            assert!(
+                response.stdout.contains(command),
+                "`{command}` must be listed: {}",
+                response.stdout
+            );
+        }
+        assert!(response.stdout.contains("--replace"));
+    }
+
+    #[test]
+    fn app_list_of_an_empty_catalogue_prints_an_empty_list() {
+        let (_dir, env) = isolated();
+
+        let response = execute(["app", "list"], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        assert_eq!(response.stderr, "");
+        assert_eq!(response.stdout, "applications: none\n");
+        assert!(
+            catalogue(&env).is_file(),
+            "listing opens the catalogue the installer writes"
+        );
+
+        let json = execute(["app", "list", "--json"], &env);
+        assert_eq!(json.code, 0, "stderr: {}", json.stderr);
+        assert_eq!(json.stderr, "");
+        assert_eq!(json.stdout, "{\"applications\":[]}\n");
+    }
+
+    #[test]
+    fn app_install_installs_the_bundle_and_records_it() {
+        let (dir, env) = isolated();
+        let bundle = example_bundle(dir.path());
+        let destination = location(&env)
+            .path()
+            .join("Applications")
+            .join("Example.app");
+
+        let response = execute(["app", "install", path_arg(&bundle)], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        assert_eq!(response.stderr, "");
+        assert!(
+            response
+                .stdout
+                .starts_with(&format!("installed: {}\n", destination.display())),
+            "the destination must be printed: {}",
+            response.stdout
+        );
+        assert!(response.stdout.ends_with('\n'));
+        assert!(
+            destination.join("Contents").join("Info.plist").is_file(),
+            "the bundle is copied whole into the prefix"
+        );
+        assert!(
+            destination
+                .join("Contents")
+                .join("MacOS")
+                .join("Example")
+                .is_file()
+        );
+
+        let rows = applications(&env);
+        assert_eq!(rows.len(), 1, "unexpected rows: {rows:?}");
+        let row = &rows[0];
+        assert_eq!(row.id, "com.example.example");
+        assert_eq!(row.bundle_id, "com.example.example");
+        assert_eq!(row.name, "Example App");
+        assert_eq!(row.version.as_deref(), Some("1.2.3"));
+        assert_eq!(row.bundle_path, destination);
+        assert_eq!(row.architecture.as_deref(), Some("x86_64"));
+        assert_eq!(row.installation_type, "bundle");
+        assert_eq!(row.installation_status, "installed");
+
+        let library = Library::open(&catalogue(&env)).expect("the CLI wrote the catalogue");
+        let attempts = library
+            .installations()
+            .expect("read the installation history");
+        assert_eq!(attempts.len(), 1, "unexpected history: {attempts:?}");
+        assert_eq!(attempts[0].origin, path_arg(&bundle));
+        assert_eq!(attempts[0].format, "app");
+        assert_eq!(attempts[0].result, "installed");
+
+        let listed = execute(["app", "list"], &env);
+        assert_eq!(listed.code, 0, "stderr: {}", listed.stderr);
+        assert!(
+            listed.stdout.contains(&format!(
+                "application: name=Example App bundle_id=com.example.example version=1.2.3 \
+                 architecture=x86_64 status=installed path={}\n",
+                destination.display()
+            )),
+            "unexpected output: {}",
+            listed.stdout
+        );
+    }
+
+    #[test]
+    fn app_install_refuses_an_existing_destination_unless_replace_is_set() {
+        let (dir, env) = isolated();
+        let bundle = example_bundle(dir.path());
+        let destination = location(&env)
+            .path()
+            .join("Applications")
+            .join("Example.app");
+        let first = execute(["app", "install", path_arg(&bundle)], &env);
+        assert_eq!(first.code, 0, "stderr: {}", first.stderr);
+
+        let refused = execute(["app", "install", path_arg(&bundle)], &env);
+
+        assert_eq!(refused.code, 1);
+        assert_eq!(refused.stdout, "");
+        assert!(
+            refused.stderr.starts_with("error: "),
+            "unexpected stderr: {}",
+            refused.stderr
+        );
+        assert!(
+            refused.stderr.contains("replace"),
+            "the failure must name the policy: {}",
+            refused.stderr
+        );
+        assert_eq!(
+            applications(&env).len(),
+            1,
+            "a refused import records no application"
+        );
+
+        let replaced = execute(
+            ["app", "install", path_arg(&bundle), "--replace", "--json"],
+            &env,
+        );
+
+        assert_eq!(replaced.code, 0, "stderr: {}", replaced.stderr);
+        assert_eq!(replaced.stderr, "");
+        let document = json_document(&replaced.stdout);
+        assert_eq!(document["format"].as_str(), Some("app"));
+        assert_eq!(document["path"].as_str(), Some(path_arg(&destination)));
+        assert_eq!(
+            document["metadata"]["bundle_id"].as_str(),
+            Some("com.example.example")
+        );
+        assert!(
+            document["installation_id"]
+                .as_str()
+                .is_some_and(|id| !id.is_empty()),
+            "an attempt reports its identifier: {}",
+            replaced.stdout
+        );
+        assert_eq!(
+            applications(&env).len(),
+            1,
+            "a replacement keeps one application row"
+        );
+
+        let library = Library::open(&catalogue(&env)).expect("the CLI wrote the catalogue");
+        let attempts = library
+            .installations()
+            .expect("read the installation history");
+        assert_eq!(
+            attempts.len(),
+            3,
+            "every attempt stays in the history: {attempts:?}"
+        );
+        assert_eq!(
+            attempts.iter().filter(|a| a.result == "failed").count(),
+            1,
+            "the refused attempt is recorded as failed: {attempts:?}"
+        );
+    }
+
+    #[test]
+    fn a_source_the_installer_refuses_creates_no_applications_directory() {
+        let (dir, env) = isolated();
+        let source = dir.path().join("Example.dmg");
+        std::fs::write(&source, b"not a disk image").expect("write the source");
+        let applications_dir = location(&env).path().join("Applications");
+
+        let response = execute(["app", "install", path_arg(&source)], &env);
+
+        assert_eq!(response.code, 1);
+        assert_eq!(response.stdout, "");
+        assert!(
+            response.stderr.starts_with("error: "),
+            "unexpected stderr: {}",
+            response.stderr
+        );
+        assert!(
+            response.stderr.contains("Example.dmg"),
+            "the failure must name the source: {}",
+            response.stderr
+        );
+        assert!(
+            response.stderr.contains(".app") && response.stderr.contains(".zip"),
+            "the failure must list the supported formats: {}",
+            response.stderr
+        );
+        assert!(
+            !applications_dir.exists(),
+            "the applications directory belongs to the installer, which refused to run"
+        );
+        assert!(
+            applications(&env).is_empty(),
+            "a refused source records no application"
+        );
+    }
+
+    #[test]
+    fn the_catalogue_falls_back_to_the_home_data_directory() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let env = env_without_xdg(dir.path());
+        let bundle = example_bundle(dir.path());
+
+        let response = execute(["app", "install", path_arg(&bundle)], &env);
+
+        assert_eq!(response.code, 0, "stderr: {}", response.stderr);
+        let data_dir = dir
+            .path()
+            .join("home")
+            .join(".local")
+            .join("share")
+            .join("darling-platform");
+        assert!(
+            data_dir.join("library.sqlite3").is_file(),
+            "without XDG_DATA_HOME the catalogue lives in the home data directory"
+        );
+        assert!(
+            !dir.path().join("data").exists(),
+            "the XDG data home must stay untouched"
         );
     }
 }

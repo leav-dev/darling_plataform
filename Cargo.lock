@@ -100,6 +100,9 @@ dependencies = [
 name = "dp-cli"
 version = "0.1.0"
 dependencies = [
+ "dp-app-installer",
+ "dp-app-library",
+ "dp-bundle-inspector",
  "dp-hardware-intelligence",
  "dp-shared-prefix",
  "serde_json",
