@@ -5,44 +5,61 @@ aplicación** y **lanzarla**. Al final, el escaneo de hardware y el apagado del
 prefijo, que son las dos operaciones que pueden dejar el sistema en un estado
 inconsistente si se hacen mal.
 
-Los diagramas describen el comportamiento esperado; todavía no hay
-implementación.
+Los diagramas describen el comportamiento esperado. La importación (§1), el
+escaneo de hardware (§3) y el apagado del prefijo (§4) están implementados; el
+lanzamiento (§2) todavía no.
 
 ## 1. Importación e instalación
 
+Este recorrido está implementado: describe lo que hacen hoy `dp app inspect`,
+`dp app install` y `dp app list`. Detalle en
+[`application-install.md`](application-install.md).
+
 ```mermaid
 flowchart TD
-    A["Seleccionar archivo o bundle"] --> B["Identificar formato"]
-    B --> C["Extraer o montar en staging"]
-    C --> D["Inspeccionar metadatos<br/>Info.plist + Mach-O"]
-    D --> E["Validar estructura y arquitectura"]
-    E --> F["Analizar requisitos"]
-    F --> G{"¿Instalación permitida?"}
-    G -- "No" --> H["Mostrar motivo y cancelar"]
-    G -- "Sí" --> I["Instalar en DPREFIX compartido"]
-    I --> J["Registrar en Application Library"]
-    J --> K["Actualizar icono y catálogo"]
+    A["dp app install &lt;origen&gt;"] --> B["Identificar formato por extensión"]
+    B -. "no soportado" .-> X["Error: .dmg, .pkg y .xip fuera de este corte<br/>sin fila de historial"]
+    B -- ".app o .zip" --> C["Crear Applications/.staging/&lt;installation_id&gt;<br/>en el mismo sistema de archivos que el destino"]
+    C --> D["Copiar el .app o extraer el .zip<br/>validando cada entrada al escribirla"]
+    D --> E["Localizar el único .app preparado"]
+    E --> F["Inspeccionar: Info.plist + Mach-O"]
+    F --> G{"¿Destino ocupado?"}
+    G -- "Sí, sin --replace" --> H["Rechazar: intento fallido en el historial"]
+    G -- "No, o con --replace" --> I["Un solo rename a<br/>Applications/&lt;nombre&gt;.app"]
+    I --> J["Escribir applications + installations<br/>en una transacción"]
+    J -. "el catálogo rechaza: deshacer el rename" .-> H
+    J --> K["Borrar el staging en todos los caminos"]
 ```
 
 Puntos donde se pierde información o se puede romper el sistema:
 
 | Etapa | Qué se conserva | Qué se valida | Qué puede fallar |
 | --- | --- | --- | --- |
-| Identificación | Formato detectado y ruta de origen | Extensión y contenido, no solo el nombre | Formato no soportado por la versión de Darling |
-| Staging | Copia temporal aislada | Rutas dentro del destino, symlinks, permisos | Path traversal, archivo corrupto, espacio insuficiente |
-| Inspección | Metadatos y arquitecturas | Rutas declaradas dentro del bundle, ejecutable presente | `Info.plist` inválido, Mach-O truncado |
-| Análisis | Evidencias y desconocidos | Requisitos contra el perfil de capacidades | Framework o API no soportada |
-| Instalación | Historial con origen, versión y resultado | Lock de escritura del prefijo | Colisión con instalación existente |
-| Registro | Fila en `applications` + historial | Consistencia con lo instalado | Fallo de escritura en SQLite |
+| Identificación | Formato por extensión y ruta de origen | Solo la extensión: el contenido no se adivina | Formato fuera de este corte |
+| Staging | Copia aislada en `Applications/.staging/<id>` | Que `installation_id` sea un componente de ruta; rutas, enlaces y tamaños al copiar | Path traversal, enlace que sale del bundle, ZIP por encima de los límites |
+| Inspección | Metadatos, arquitecturas, frameworks y recursos | Rutas declaradas dentro del bundle, ejecutable presente y Mach-O legible | `Info.plist` inválido o de tipo equivocado, ejecutable ausente |
+| Destino | Nombre saneado y ruta final | Que el nombre sea un solo componente y que el destino no esté ocupado sin `--replace` | Colisión con una instalación existente |
+| Instalación | Un único `rename` entre sistemas de archivos iguales | Que el staging y el destino compartan sistema de archivos | Segundo `rename` fallido; restitución fallida |
+| Registro | Fila en `applications` + fila en `installations` | Consistencia con lo instalado, en una transacción | Fallo de escritura en SQLite; id de intento repetido |
+| Limpieza | Nada: el staging se borra siempre | Que no quede directorio de staging ni copia parcial | Un staging huérfano que ocupa espacio |
 
 Reglas que aplican a todo el recorrido:
 
-- **Nada se instala sin staging previo.** Un fallo no puede dejar una instalación
-  parcial silenciosa.
-- **El consentimiento es explícito** cuando el formato puede ejecutar scripts
-  (PKG), y la advertencia dice que el rollback puede ser incompleto.
-- **El origen se registra siempre**, incluso si la instalación falla: el historial
-  es la evidencia de qué se intentó.
+- **Nada se instala sin staging previo.** El staging vive en el mismo sistema de
+  archivos que el destino, así que la instalación es un solo `rename` y un fallo
+  no puede dejar una instalación parcial silenciosa.
+- **El historial se escribe siempre**, también cuando la instalación falla: la
+  fila lleva `result = failed`, sin `application_id` y con el motivo en `detail`.
+  Solo un origen con formato no soportado no es un intento y no deja fila.
+- **No se sobrescribe nada en silencio.** Un destino ocupado se rechaza salvo
+  `--replace`, que intercambia las copias y actualiza la fila en lugar de
+duplicarla.
+- **El lock de escritura del prefijo se toma antes de escribir.** `dp app install`
+  falla con `PrefixBusy` si otra operación lo tiene.
+- **El análisis de compatibilidad no corre en este corte.** El instalador
+  registra lo que el bundle declara, no decide si puede ejecutarse.
+- **Nada se ejecuta.** Ni el binario del bundle ni scripts de instalador: por eso
+  `.pkg` está fuera hasta tener su propio flujo con consentimiento explícito.
 
 ## 2. Lanzamiento y supervisión
 
@@ -146,29 +163,35 @@ explícito y diagnóstico cuando falla.
 ```text
 ~/.local/share/darling-platform/
 ├── prefix/                     # DPREFIX compartido, administrado por Darling
-├── apps/
-│   ├── registry.sqlite         # catálogo
-│   ├── icons/
-│   ├── cache/
-│   └── staging/                # temporal; nunca es destino final
-├── logs/
-│   ├── execution/
-│   ├── installation/
-│   └── daemon/
-└── config/
-    ├── runtime.json
-    └── applications.json
+│   └── Applications/           # bundles instalados: <nombre>.app
+│       └── .staging/           # temporal; nunca es destino final
+├── prefix.lock                 # lock del Shared Prefix Manager, fuera del prefijo
+├── state.json                  # estado persistido del ciclo de vida
+├── library.sqlite3             # catálogo: applications e installations
+├── icons/                      # previsto: iconos convertidos
+├── cache/                      # previsto
+├── logs/                       # previsto
+└── config/                     # previsto
 ```
 
-Configuración y preferencias pueden vivir en `~/.config/darling-platform/` según
-Xdp Base Directory Specification.
+Implementado hoy: el prefijo, su lock y su estado, el catálogo en
+`library.sqlite3`, los bundles en `prefix/Applications/` y el staging en
+`prefix/Applications/.staging/`. Los iconos, la caché, los logs y la
+configuración todavía no existen: el catálogo guarda la ruta del `.icns` que
+está dentro del bundle instalado, no una copia convertida.
 
 Reglas:
 
-- **Los datos de la plataforma no entran en el DPREFIX.** Catálogo, iconos, logs y
-  configuración quedan fuera.
+- **Los datos de la plataforma no entran en el DPREFIX.** Catálogo, lock, estado,
+  iconos, logs y configuración quedan fuera. La única excepción son los bundles
+  instalados, que van a `<prefijo>/Applications/` porque ese es el destino que
+  Darling lee, y el staging, que vive ahí para compartir sistema de archivos con
+  el destino y poder instalarse con un solo `rename`.
 - **El prefijo no se mueve ni se copia con Darling activo.** La documentación de
   backup y recuperación es parte del trabajo del Shared Prefix Manager, no un
   apéndice opcional.
-- **El staging se limpia.** Un staging huérfano ocupa espacio y confunde el
-  diagnóstico; su recuperación es parte del ciclo de instalación.
+- **El staging se limpia.** La guarda del staging lo borra en todos los caminos
+  de salida, así que un staging huérfano solo puede quedar tras un corte abrupto
+  del proceso; el siguiente intento con el mismo `installation_id` lo reemplaza.
+- **Configuración y preferencias** pueden vivir en `~/.config/darling-platform/`
+  según la XDG Base Directory Specification.

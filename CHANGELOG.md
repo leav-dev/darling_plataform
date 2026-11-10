@@ -19,6 +19,21 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- `dp app inspect`, `dp app install` y `dp app list`, con salida de texto y
+  `--json`, código 1 para un fallo de ejecución y 2 para un uso incorrecto.
+- Instalador de aplicaciones con staging dentro del sistema de archivos del
+  destino y una sola operación `rename`: acepta un `.app` ya extraído o un `.zip`
+  que lo contenga, valida cada entrada antes de escribirla y nunca deja una
+  instalación parcial. Reemplazar es opt-in con `--replace`, que intercambia las
+  copias a través de `.staging/<id>-replaced` y restituye la anterior si el
+  segundo `rename` falla.
+- Catálogo SQLite fuera del DPREFIX (`library.sqlite3`) con migraciones
+  versionadas en `user_version`, las tablas `applications` e `installations`, y
+  un historial que conserva también los intentos fallidos.
+- `.dmg`, `.pkg`, `.xip` y el rollback de una instalación completada quedan
+  deliberadamente fuera de este corte; se rechazan con un error que nombra los
+  formatos soportados. La conversión de iconos `.icns` también se difiere.
+- El workspace requiere Rust 1.88 o superior (`rust-version` del workspace).
 - `dp hardware scan`, con salida de texto para lectura humana y `--json` para
   consumidores; sale con código 1 solo cuando el host no se pudo describir.
 - Reporte de hardware versionado (`schema_version` 1.0) con diagnósticos por

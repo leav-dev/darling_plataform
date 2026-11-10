@@ -105,10 +105,10 @@ Decisión del usuario:
 
 | ID | Spec | Entrega | Commit |
 | --- | --- | --- | --- |
-| T1 | S2, S5 | Bundle Inspector: `Info.plist` (XML y binario), metadata, validación de paths dentro del bundle, ejecutable existente y arquitecturas Mach-O | — |
-| T2 | S4, S5 | Application Library: esquema SQLite versionado, migraciones, alta y consulta de aplicaciones e historial | — |
-| T3 | S3, S5, S6, S7, S8 | App Installer: staging para `.app` y `.zip`, extracción segura, validación con el inspector, instalación atómica en el DPREFIX con lock, política de sobrescritura e historial | — |
-| T4 | S5, S6 | CLI `dp app inspect\|install\|list` con texto y `--json` | — |
+| T1 | S2, S5 | Bundle Inspector: `Info.plist` (XML y binario), metadata, validación de paths dentro del bundle, ejecutable existente y arquitecturas Mach-O | `a7d8f43` |
+| T2 | S4, S5 | Application Library: esquema SQLite versionado, migraciones, alta y consulta de aplicaciones e historial | `2ea0d3f` |
+| T3 | S3, S5, S6, S7, S8 | App Installer: staging para `.app` y `.zip`, extracción segura, validación con el inspector, instalación atómica en el DPREFIX con lock, política de sobrescritura e historial | `786cfcc` + `6e6d983` |
+| T4 | S5, S6 | CLI `dp app inspect\|install\|list` con texto y `--json` | `ec0f952` |
 | T5 | S5, S6 | Documentación: campos y límites, `components.md`, `data-flow.md`, ADR-0012 (formatos, staging, rollback y riesgos de PKG) y CHANGELOG | — |
 
 ## Log
@@ -118,4 +118,5 @@ Decisión del usuario:
 - **L3** — Decisión del usuario: corte 1 = inspector + `.app`/`.zip` + SQLite + historial; DMG, PKG, `.xip` y rollback quedan para un corte siguiente.
 - **L4** — Decisión del usuario: `plist` + `zip` + `rusqlite` con `bundled`; nada de dependencias de sistema nuevas en el `.deb`.
 - **L5** — Decisión del usuario: bundles en `<DPREFIX>/Applications/<Bundle>.app`, catálogo e iconos en el data home, con lock de escritura del SPM durante la instalación.
+- **L7** — Verificación: 48 tests del inspector, 39 del catálogo y 28 del instalador en verde, `clippy -D warnings` y `rustfmt --check` limpios en los tres crates. Una verificación independiente del instalador reprodujo un bloqueante: una fila de `applications` podía sobrevivir apuntando a un bundle ya borrado por el rollback; se corrigió con una transacción que escribe aplicación e historial juntas (`6e6d983`). `dp-cli` no se compila en esta máquina: sus 12 tests nuevos quedan para CI, con revisión estática independiente que no encontró defectos de compilación.
 - **L6** — Decisión de alcance: la conversión de `.icns` se difiere hasta que exista una interfaz que consuma iconos; el inspector reporta el icono declarado y el instalador preserva el original. Riesgo declarado del corte: escritura de archivos y extracción de comprimidos de entrada no confiable (ítems 1 y 2 de riesgo alto), así que la verificación incluye revisión independiente.

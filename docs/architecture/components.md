@@ -4,8 +4,9 @@ Un apartado por componente: qué hace, qué no hace, qué contrato expone y en q
 estado está hoy. Los contratos son **conceptuales**: nombres y campos pueden
 cambiar hasta que exista implementación y pruebas que los fijen.
 
-Estado actual: todos los crates están vacíos y declaran su límite en la
-documentación del crate. Ningún componente tiene lógica todavía.
+Estado actual: hay componentes implementados (hardware, prefijo, inspector,
+instalador y catálogo) y componentes que siguen siendo esqueleto: declaran su
+límite en la documentación del crate y todavía no tienen lógica.
 
 ---
 
@@ -146,52 +147,87 @@ pub struct RunningApplication {
 
 ## Darling App Installer (DAI)
 
-**Crate:** `dp-app-installer` · **Estado:** esqueleto
+**Crate:** `dp-app-installer` · **Estado:** implementado (Fase 3, corte 1) para
+`.app` y `.zip`
 
-Importa `.app`, ZIP y —cuando el flujo esté verificado— DMG y PKG. Flujo:
-seleccionar → identificar formato → extraer o montar en staging → inspeccionar
-metadatos → validar estructura y arquitectura → analizar requisitos → decidir si
-la instalación está permitida → instalar en el prefijo → registrar en el catálogo →
-actualizar icono y catálogo.
+Importa un bundle en el DPREFIX compartido sin ejecutarlo. Flujo, en orden:
+identificar formato por extensión → crear
+`<prefijo>/Applications/.staging/<installation_id>` → copiar el `.app` o extraer
+el `.zip` validando cada path mientras se escribe → encontrar el único `.app`
+preparado → inspeccionarlo con el Bundle Inspector → derivar
+`<prefijo>/Applications/<nombre>.app` → rechazar un destino ocupado salvo
+`--replace` → un solo `std::fs::rename` → escribir las dos filas del catálogo en
+una transacción → borrar el staging.
 
-- **No hace:** declarar compatibilidad, ejecutar scripts de instalador sin
-  consentimiento, ni sobrescribir una instalación existente sin política explícita.
-- **Riesgo:** los archivos son entrada no confiable. Staging obligatorio, rechazo
-  de path traversal y de symlinks maliciosos, y PKG tratado como flujo de mayor
-  riesgo con advertencia de que los scripts pueden impedir un rollback completo.
+- **Hace:** staging en el mismo sistema de archivos que el destino, extracción
+  segura del ZIP (200 000 entradas y 8 GiB descomprimidos como máximos), copia
+  del `.app` con enlaces simbólicos recreados solo si su destino canónico sigue
+  dentro del bundle, política de reemplazo explícita y registro de cada intento,
+  con éxito o sin él.
+- **No hace:** declarar compatibilidad, ejecutar nada, resolver el prefijo ni
+  tomar el lock (lo hace el CLI antes de llamarlo), ni sobrescribir una
+  instalación existente sin política explícita.
+- **Riesgo:** los archivos son entrada no confiable. Ver las reglas completas en
+  [`application-install.md`](application-install.md).
 
-Prioridad de formatos: `.app` → `.zip` → `.dmg` → `.pkg` → `.xip`.
+**No hace todavía:** `.dmg`, `.pkg` y `.xip` (se rechazan nombrando la ruta y los
+formatos soportados), rollback de una instalación completada y conversión de
+iconos `.icns`.
 
 ---
 
 ## Bundle Inspector
 
-**Crate:** `dp-bundle-inspector` · **Estado:** esqueleto
+**Crate:** `dp-bundle-inspector` · **Estado:** implementado (Fase 3, corte 1)
 
 Extrae metadatos **sin ejecutar** el binario: `CFBundleIdentifier`,
-`CFBundleName`, `CFBundleDisplayName`, `CFBundleVersion`, `CFBundleExecutable`,
+`CFBundleName` (con el nombre del directorio como respaldo, igual que macOS),
+`CFBundleDisplayName`, `CFBundleVersion`, `CFBundleExecutable`,
 `CFBundleIconFile`, `LSMinimumSystemVersion`, arquitecturas y slices Mach-O, y
 rutas de frameworks y recursos.
 
-Valida que las rutas declaradas permanezcan dentro del bundle y que el ejecutable
-esperado exista. `Info.plist` y las cabeceras Mach-O son entrada no confiable.
+- **Hace:** lee `Contents/Info.plist` en XML o binario; valida cada ruta
+  declarada léxicamente (nada absoluto, ningún `..`) y físicamente (ningún
+  symlink que salga del bundle); exige que el ejecutable declarado exista, sea
+  archivo regular y tenga cabecera Mach-O; reporta las arquitecturas por slice
+  (archivo delgado o universal) sin consultar `file`, `otool` ni `lipo`. Se
+  expone con `dp app inspect <path> [--json]`.
+- **No hace:** ejecutar el binario, instalar nada ni decidir compatibilidad.
+  Tampoco convierte iconos: reporta el `.icns` declarado y el original queda
+  donde está.
+
+`Info.plist` y las cabeceras Mach-O son entrada no confiable: una clave del tipo
+equivocado se rechaza en lugar de ignorarse, y un plist que no es diccionario o
+no declara identificador ni ejecutable se rechaza nombrando el archivo.
 
 ---
 
 ## Application Library
 
-**Crate:** `dp-app-library` · **Estado:** esqueleto
+**Crate:** `dp-app-library` · **Estado:** implementado (Fase 3, corte 1) para
+catálogo e historial
 
-Catálogo local en SQLite, fuera del DPREFIX, con migraciones versionadas. Tablas
-iniciales previstas: `applications`, `running_instances`, `installation_history`.
+Catálogo local en SQLite (`darling-platform/library.sqlite3` en el data home de
+la plataforma), fuera del DPREFIX, con migraciones versionadas en
+`PRAGMA user_version`.
 
-- **Hace:** persiste identidad, versión, rutas, estado de instalación,
-  historial y estado de ejecución.
-- **No hace:** ser la única fuente de verdad sobre el sistema de archivos.
+- **Hace:** persiste las dos tablas del corte, `applications` (identidad,
+  versión, rutas, arquitectura, tipo y estado de instalación) e `installations`
+  (origen, formato, resultado, motivo y fecha de cada intento, con éxito o sin
+  él). Escribe aplicación e intento en una sola transacción y ofrece un *upsert*
+  para el reemplazo. Se consulta con `dp app list [--json]`.
+- **No hace:** ser la única fuente de verdad sobre el sistema de archivos: antes
+  de lanzar, actualizar o desinstalar hay que verificar que las rutas grabadas
+  existen.
 
 Estados distintos que no deben colapsarse: `Imported`, `Installed`, `Analyzed`,
 `Compatible`, `PartiallyCompatible`, `Unsupported`, `Running`, `Crashed`. Una
 aplicación puede estar instalada y ser no ejecutable a la vez.
+
+**No hace todavía:** `running_instances` y el estado de ejecución (nada lanza
+procesos en este corte), el análisis de compatibilidad en la fila y la consulta
+de historial desde el CLI. La tabla prevista `installation_history` se llamó
+`installations` al implementarse.
 
 ---
 
@@ -230,12 +266,20 @@ no copias de Darling.
 
 ## CLI (`dp`)
 
-**Crate:** `dp-cli` · **Estado:** `prefix` y `hardware scan` implementados
+**Crate:** `dp-cli` · **Estado:** `prefix`, `hardware scan` y `app` implementados
 
 Implementa `--version`, `--help`, el rechazo explícito de entrada desconocida
-(código de salida 2) y las familias `dp prefix` y `dp hardware`. Cada comando es
-un adaptador delgado: la lógica vive en el módulo que el comando invoca, y la
-salida JSON se deriva de los tipos del módulo, no de plantillas paralelas.
+(código de salida 2) y las familias `dp prefix`, `dp hardware` y `dp app`. Cada
+comando es un adaptador delgado: la lógica vive en el módulo que el comando
+invoca, y la salida JSON se deriva de los tipos del módulo, no de plantillas
+paralelas.
+
+`dp app inspect <path>` es de solo lectura y no toca el prefijo ni el catálogo;
+`dp app install <path> [--replace]` toma el lock de escritura del Shared Prefix
+Manager antes de escribir; `dp app list [--json]` abre el catálogo, que se crea
+vacío si no existe. Los tres aceptan `--json` y usan código 1 para un fallo de
+ejecución y 2 para un uso incorrecto. Detalle en
+[`application-install.md`](application-install.md).
 
 `dp hardware scan` acepta `--json` y sale con código 1 solo cuando el reporte
 llega `failed`, para que un script distinga un reporte degradado pero usable de
