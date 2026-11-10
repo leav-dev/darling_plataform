@@ -28,6 +28,7 @@ pub(crate) fn declared(
         || relative
             .components()
             .any(|component| matches!(component, Component::Prefix(_)))
+        || windows_rooted(value)
     {
         return Err(Error::AbsolutePath {
             bundle: bundle.to_path_buf(),
@@ -50,6 +51,19 @@ pub(crate) fn declared(
         path.push(component);
     }
     Ok(path.join(relative))
+}
+
+/// Reports whether `value` is rooted in Windows terms, independently of the host.
+///
+/// `Path` only sees a Windows root on Windows: on Linux `C:\\Windows` and
+/// `\\\\server\\share` are ordinary relative names, so a bundle declaring them
+/// would be accepted and later joined onto the bundle path. A macOS bundle never
+/// declares a Windows root, and the scanner itself also runs on Windows, so the
+/// rejection has to be lexical and platform independent.
+fn windows_rooted(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    drive || value.starts_with('\\')
 }
 
 /// Proves that the existing `path` still sits inside `root`, the canonical
