@@ -20,7 +20,7 @@ use std::process::{Command, Stdio};
 use crate::error::{Error, Result};
 
 /// Environment variable that points the platform at a specific Darling binary.
-const PROGRAM_ENV: &str = "DG_DARLING";
+const PROGRAM_ENV: &str = "DP_DARLING";
 
 /// Darling program name used when [`PROGRAM_ENV`] is unset, resolved through `PATH`.
 const DEFAULT_PROGRAM: &str = "darling";
@@ -71,7 +71,7 @@ impl SystemDarling {
         }
     }
 
-    /// Reads `DG_DARLING`, defaulting to `darling` resolved through `PATH`.
+    /// Reads `DP_DARLING`, defaulting to `darling` resolved through `PATH`.
     pub fn from_env() -> Self {
         match std::env::var_os(PROGRAM_ENV) {
             Some(program) if !program.is_empty() => Self::new(PathBuf::from(program)),
@@ -108,6 +108,16 @@ impl Darling for SystemDarling {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn the_program_override_is_named_for_the_platform() {
+        assert_eq!(
+            PROGRAM_ENV, "DP_DARLING",
+            "the override keeps the platform prefix; DG_DARLING was the old brand"
+        );
+    }
+
     use super::*;
 
     /// A path that cannot exist, so a spawn against it always fails.

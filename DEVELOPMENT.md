@@ -89,7 +89,7 @@ Opciones relevantes:
 | `DP_BUILD_DIR` | `build` | Solo para `scripts/ci/check.sh` |
 | `DPREFIX` | `~/.local/share/darling-platform/prefix` | Prefijo dedicado; el convencional `~/.darling` se rechaza |
 | `XDG_DATA_HOME` | `~/.local/share` | Raíz del directorio de datos de la plataforma |
-| `DG_DARLING` | `darling` | Binario de Darling que invoca el adaptador |
+| `DP_DARLING` | `darling` | Binario de Darling que invoca el adaptador |
 | `XDG_CACHE_HOME` | `~/.cache` | Caché de la descarga verificada del pin de Darling |
 
 El build de CMake usa `--target-dir` dentro del árbol de build: **nunca** escribe
@@ -194,6 +194,6 @@ Una decisión que cambia una regla del plan se registra en
 | CMake sigue usando un perfil viejo | Caché de `build/` | Borrá el directorio, o pasá `-DDP_CARGO_PROFILE=` de nuevo |
 | `ctest` no encuentra pruebas | No se configuró CMake | `cmake -S . -B build` antes de `ctest --test-dir build` |
 | El build escribe en `./target` | Invocación directa de `cargo` | Es esperable fuera de CMake; `.gitignore` lo cubre |
-| `dp prefix start` falla con `DarlingUnavailable` | No hay binario `darling` | Instalá Darling o apuntá `DG_DARLING` al ejecutable |
+| `dp prefix start` falla con `DarlingUnavailable` | No hay binario `darling` | Instalá Darling o apuntá `DP_DARLING` al ejecutable |
 | `dp prefix start` dice `PrefixBusy` | Otra operación tiene el lock | Esperá a que termine, o revisá `dp prefix status` |
 | `dp prefix stop` rechaza | Hay instancias gestionadas activas | Cerrá esas instancias: `darling shutdown` las mataría |

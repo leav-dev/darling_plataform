@@ -7,6 +7,12 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Changed
+
+- La variable que apunta al binario de Darling pasa a `DP_DARLING` (antes
+  `DG_DARLING`, resto del nombre anterior del proyecto). Un test fija el nombre
+  para que no vuelva a divergir del prefijo de la plataforma.
+
 ### Fixed
 
 - `dp prefix start` crea el directorio padre del prefijo antes de invocar Darling,

@@ -117,7 +117,7 @@ impl fmt::Display for Error {
             ),
             Self::DarlingUnavailable { program, source } => write!(
                 f,
-                "cannot run Darling '{program}': {source}; install Darling, or point DG_DARLING at \
+                "cannot run Darling '{program}': {source}; install Darling, or point DP_DARLING at \
                  the darling executable, and retry",
                 program = program.display()
             ),

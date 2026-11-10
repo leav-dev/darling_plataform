@@ -94,7 +94,7 @@ en la Fase 0 con evidencia reproducible.
 
 | Síntoma | Causa probable | Qué hacer |
 | --- | --- | --- |
-| `DarlingUnavailable` al hacer `start` | No hay binario `darling` | Instalá el pin o apuntá `DG_DARLING` |
+| `DarlingUnavailable` al hacer `start` | No hay binario `darling` | Instalá el pin o apuntá `DP_DARLING` |
 | El hash no coincide al descargar | Descarga incompleta o asset reemplazado | Borrá el archivo del caché y reintentá; si persiste, revisá el release |
 | `missingSetuidRoot` | El binario perdió el bit setuid | Reinstalá los paquetes del pin |
 | `dp prefix status` muestra otro Darling | Instalación manual ajena al pin | Verificá con `dpkg -l` y reinstalá el pin |
