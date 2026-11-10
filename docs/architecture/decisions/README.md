@@ -40,3 +40,4 @@ es documentación de cómo funciona algo; para eso están
 | [0010](ADR-0010-instalador-deb.md) | Instalador de un comando entregado como paquete `.deb` | aceptada |
 | [0011](ADR-0011-reporte-de-hardware.md) | Reporte de hardware desde procfs/sysfs con fuente inyectable | aceptada |
 | [0012](ADR-0012-importacion-de-aplicaciones.md) | Importación de aplicaciones con staging, `.app`/`.zip` y catálogo SQLite | aceptada |
+| [0013](ADR-0013-motor-de-compatibilidad.md) | Motor de compatibilidad estático con perfil de capacidades versionado | aceptada |

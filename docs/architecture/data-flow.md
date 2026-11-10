@@ -1,13 +1,13 @@
 # Flujos de datos
 
-Cómo viaja la información en los dos recorridos que definen el MVP: **importar una
-aplicación** y **lanzarla**. Al final, el escaneo de hardware y el apagado del
-prefijo, que son las dos operaciones que pueden dejar el sistema en un estado
-inconsistente si se hacen mal.
+Cómo viaja la información en los tres recorridos que definen el MVP: **importar
+una aplicación**, **analizar si es compatible** y **lanzarla**. Al final, el
+escaneo de hardware y el apagado del prefijo, que son las dos operaciones que
+pueden dejar el sistema en un estado inconsistente si se hacen mal.
 
 Los diagramas describen el comportamiento esperado. La importación (§1), el
-escaneo de hardware (§3) y el apagado del prefijo (§4) están implementados; el
-lanzamiento (§2) todavía no.
+análisis de compatibilidad (§2), el escaneo de hardware (§4) y el apagado del
+prefijo (§5) están implementados; el lanzamiento (§3) todavía no.
 
 ## 1. Importación e instalación
 
@@ -56,12 +56,57 @@ Reglas que aplican a todo el recorrido:
 duplicarla.
 - **El lock de escritura del prefijo se toma antes de escribir.** `dp app install`
   falla con `PrefixBusy` si otra operación lo tiene.
-- **El análisis de compatibilidad no corre en este corte.** El instalador
-  registra lo que el bundle declara, no decide si puede ejecutarse.
+- **La importación no analiza compatibilidad.** El instalador registra lo que el
+  bundle declara y no decide si puede ejecutarse; el análisis es un comando aparte
+  (§2) y no bloquea nada.
 - **Nada se ejecuta.** Ni el binario del bundle ni scripts de instalador: por eso
   `.pkg` está fuera hasta tener su propio flujo con consentimiento explícito.
 
-## 2. Lanzamiento y supervisión
+## 2. Análisis de compatibilidad
+
+Este recorrido está implementado: describe lo que hace hoy `dp app compat <path>
+[--json]`. Detalle en [`application-compat.md`](application-compat.md).
+
+```mermaid
+flowchart TD
+    A["dp app compat &lt;ruta&gt;"] --> B["Bundle Inspector<br/>Info.plist: metadatos, arquitecturas,<br/>LSMinimumSystemVersion, frameworks embebidos"]
+    A --> C["Load commands Mach-O<br/>dylibs declaradas y versión mínima"]
+    B --> D["Motor de compatibilidad<br/>un requisito por evidencia"]
+    C --> D
+    P["deps/darling-capabilities.toml<br/>embebido con include_str!<br/>validado en cada carga"] --> D
+    D --> E["requisitos: kind · subject · status · detail"]
+    E --> F["veredicto = peor requisito"]
+    F --> G["texto"]
+    F --> H["--json<br/>schema_version 1.0"]
+    F -. "código de salida" .-> I["0 compatible o partial<br/>1 not_compatible, unknown o análisis fallido"]
+```
+
+Puntos donde se pierde información o se puede leer de más:
+
+| Etapa | Qué se conserva | Qué se decide | Qué queda afuera |
+| --- | --- | --- | --- |
+| Metadatos | Identidad del bundle, arquitecturas por slice, `LSMinimumSystemVersion`, frameworks embebidos | Slices contra la arquitectura del host; frameworks con copia embebida como advertencia | Recursos, iconos, entitlements y firmas no se miran |
+| Load commands | Install names tal como el binario los declara, sin resolver, y la versión mínima | Cada ruta contra `[[dylibs]]`, por ruta exacta | Símbolos, imports y `LC_RPATH` |
+| Perfil | `profile_version`, `darwin_version`, `macos_version` y las entradas de frameworks y dylibs | Estado de cada sujeto registrado | Todo sujeto que el perfil no registra queda `unknown` |
+| Reporte | Un requisito con su evidencia y el veredicto del peor | Nada: el reporte es la salida | Nada se escribe en el bundle, el prefijo o el catálogo |
+
+Reglas que este flujo hace visibles:
+
+- **El mismo bundle y el mismo perfil dan el mismo reporte.** La arquitectura del
+  host la inyecta el CLI (`std::env::consts::ARCH`), así que el motor no lee la
+  máquina que lo corre.
+- **El perfil llega compilado, no se lee del disco.** Un perfil roto es un error
+  que nombra el campo y el valor, nunca un valor por omisión; corregir una entrada
+  es un cambio revisado del binario.
+- **Nada se resuelve.** `@rpath`, `@executable_path` y `@loader_path` quedan como
+  advertencia, no como búsqueda: el comando no toca el prefijo ni el sistema de
+  archivos fuera del bundle.
+- **`unknown` no es un fallo ni una luz verde.** Es ausencia de evidencia, y sale
+  con código 1 para que un script no lo lea como compatibilidad.
+- **Un análisis fallido no produce reporte.** El error nombra el archivo que no se
+  pudo leer y stdout queda vacío.
+
+## 3. Lanzamiento y supervisión
 
 ```mermaid
 sequenceDiagram
@@ -98,7 +143,7 @@ Decisiones que este flujo hace visibles:
 - **Un crash no es un estado terminal del sistema.** El proceso se marca `Crashed`,
   se registra el diagnóstico y el prefijo sigue disponible.
 
-## 3. Escaneo de hardware
+## 4. Escaneo de hardware
 
 Este recorrido está implementado: describe lo que `dp hardware scan` hace hoy.
 
@@ -139,7 +184,7 @@ flowchart LR
 - El reporte no selecciona GPU ni backend; solo describe. La política Dedicated GPU
   First se aplica en el runtime.
 
-## 4. Apagado del prefijo
+## 5. Apagado del prefijo
 
 ```mermaid
 flowchart TD
@@ -158,7 +203,7 @@ El apagado es la operación más destructiva del ciclo de vida: interrumpe traba
 puede dejar el prefijo inconsistente. Por eso exige lock de escritura, estado
 explícito y diagnóstico cuando falla.
 
-## 5. Directorios de usuario
+## 6. Directorios de usuario
 
 ```text
 ~/.local/share/darling-platform/

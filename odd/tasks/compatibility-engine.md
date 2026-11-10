@@ -104,10 +104,10 @@ Decisión del usuario:
 
 | ID | Spec | Entrega | Commit |
 | --- | --- | --- | --- |
-| T1 | S2, S4 | Mach-O: dependencias dinámicas y versión mínima del OS desde los load commands, expuestas por `dp-bundle-inspector` sin romper su contrato | — |
-| T2 | S6 | Perfil de capacidades: `deps/darling-capabilities.toml`, modelo y parser con validación, embebido y versionado | — |
-| T3 | S3, S4, S5, S7 | Motor de análisis: requisitos, evidencias, veredicto por severidad y reporte versionado | — |
-| T4 | S4, S8 | CLI `dp app compat <ruta> [--json]` con texto y JSON | — |
+| T1 | S2, S4 | Mach-O: dependencias dinámicas y versión mínima del OS desde los load commands, expuestas por `dp-bundle-inspector` sin romper su contrato | `ba3dd41` |
+| T2 | S6 | Perfil de capacidades: `deps/darling-capabilities.toml`, modelo y parser con validación, embebido y versionado | `05d549c` |
+| T3 | S3, S4, S5, S7 | Motor de análisis: requisitos, evidencias, veredicto por severidad y reporte versionado | `05d549c` |
+| T4 | S4, S8 | CLI `dp app compat <ruta> [--json]` con texto y JSON | `04822fb` |
 | T5 | S3, S4 | Documentación: campos y límites, `components.md`, `data-flow.md`, ADR-0013 y CHANGELOG | — |
 
 ## Log
@@ -117,4 +117,5 @@ Decisión del usuario:
 - **L3** — Decisión del usuario: perfil TOML versionado en `deps/darling-capabilities.toml`, embebido con `include_str!`, con la dependencia `toml`.
 - **L4** — Decisión del usuario: veredicto por severidad del peor requisito (insatisfecho > desconocido > advertencia > compatible).
 - **L5** — Decisión del usuario: este corte sólo analiza; `dp app install` no cambia y nada queda bloqueado por un perfil inicial incompleto.
+- **L7** — Verificación: 63 tests del inspector y 55 del motor en verde, `clippy -D warnings` y `rustfmt --check` limpios. El perfil embebido se corrigió a macOS 11.6, que es lo que representa Darwin 20.6.0, en lugar de la línea base 11.0 que había quedado escrita. Una revisión estática independiente del comando `dp app compat` no encontró defectos, pero `dp-cli` no se compila en esta máquina: sus tests quedan para CI. Observación no bloqueante pendiente: un test fija `analyser_version: 1` como texto en vez de interpolar la constante.
 - **L6** — Riesgo declarado: el corte lee headers Mach-O de entrada no confiable (ítem 2) y produce un veredicto que un operador puede leer como garantía; la documentación debe repetir que el análisis estático es evidencia y no promesa.

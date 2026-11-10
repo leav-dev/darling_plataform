@@ -19,6 +19,26 @@ proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- `dp app compat <path> [--json]`: análisis estático de lo que un bundle `.app`
+  requiere contra las capacidades de Darling. Nunca resuelve el prefijo, no escribe
+  nada y no condiciona `dp app install`; sale con 0 cuando el veredicto es
+  `compatible` o `partial`, con 1 cuando es `not_compatible`, `unknown` o el
+  análisis falló, y con 2 ante un uso incorrecto.
+- Motor de compatibilidad (`dp-compatibility-engine`) con reporte versionado
+  (`schema_version` 1.0, `analyser_version` 1): arquitecturas del binario contra el
+  host, dependencias `dylib` y frameworks referenciados contra el perfil, y versión
+  mínima de macOS contra la línea base del perfil, con una evidencia por requisito
+  y el veredicto derivado del peor de ellos.
+- `deps/darling-capabilities.toml`: perfil de capacidades versionado y embebido en
+  el binario, validado en cada carga, con estados `supported`, `partial`,
+  `unsupported` y `unknown`. Sus entradas están en `unknown` porque todavía no hay
+  ninguna verificación registrada contra el Darling fijado.
+- Análisis de símbolos y APIs, detección de DRM/anticheat, análisis dinámico, la
+  matriz inicial de aplicaciones de prueba y el gating de `dp app install` quedan
+  deliberadamente fuera de este corte: el análisis estático es evidencia, no una
+  garantía de ejecución.
+- Documentación del motor de compatibilidad: comando, forma del reporte, perfil y
+  límites (`docs/architecture/application-compat.md`) y `ADR-0013`.
 - `dp app inspect`, `dp app install` y `dp app list`, con salida de texto y
   `--json`, código 1 para un fallo de ejecución y 2 para un uso incorrecto.
 - Instalador de aplicaciones con staging dentro del sistema de archivos del

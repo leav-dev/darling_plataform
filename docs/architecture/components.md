@@ -5,8 +5,9 @@ estado está hoy. Los contratos son **conceptuales**: nombres y campos pueden
 cambiar hasta que exista implementación y pruebas que los fijen.
 
 Estado actual: hay componentes implementados (hardware, prefijo, inspector,
-instalador y catálogo) y componentes que siguen siendo esqueleto: declaran su
-límite en la documentación del crate y todavía no tienen lógica.
+instalador, catálogo y motor de compatibilidad) y componentes que siguen siendo
+esqueleto: declaran su límite en la documentación del crate y todavía no tienen
+lógica.
 
 ---
 
@@ -233,19 +234,30 @@ de historial desde el CLI. La tabla prevista `installation_history` se llamó
 
 ## Compatibility Engine
 
-**Crate:** `dp-compatibility-engine` · **Estado:** esqueleto
+**Crate:** `dp-compatibility-engine` · **Estado:** implementado (Fase 4, corte 1)
 
-Analiza requisitos estáticamente y, cuando sea posible, dinámicamente, y los
-compara con un perfil versionado de capacidades del Darling fijado y del host.
+Analiza estáticamente los requisitos de una aplicación macOS y los compara con un
+perfil versionado de las capacidades del Darling fijado. No hay análisis
+dinámico todavía.
 
-- **Hace:** Mach-O (arquitectura y slices), dependencias `dylib`, frameworks
-  referenciados, versión mínima de macOS, metadatos del bundle y requisitos
-  gráficos, de audio y de entrada identificables.
-- **No hace:** ejecutar la aplicación para inspeccionarla, ni convertir un
-  resultado favorable en garantía.
+- **Hace:** lee arquitecturas y slices del ejecutable, dependencias `dylib`,
+  frameworks referenciados y la versión mínima de macOS declarada; compara cada
+  requisito con `deps/darling-capabilities.toml`, que viaja embebido en el binario
+  con `include_str!` y se valida en cada carga; y deriva el veredicto del peor
+  requisito, con una evidencia por requisito. Se expone con
+  `dp app compat <path> [--json]`, que nunca resuelve el prefijo, no escribe nada
+  y no condiciona la instalación.
+- **No hace:** ejecutar la aplicación para inspeccionarla, resolver install names
+  (`@rpath` incluido), ni convertir un resultado favorable en garantía.
 
-Salida: resultado general, evidencias, requisitos satisfechos y no satisfechos,
-elementos desconocidos, advertencias y versiones del analizador y del perfil.
+Salida: `schema_version`, `verdict`, `analyser_version`, `profile_version` y un
+`requirements[]` con `kind`, `subject`, `status` y `detail`. Veredictos,
+severidad, perfil y límites están en
+[`application-compat.md`](application-compat.md).
+
+**No hace todavía:** análisis de símbolos y APIs, detección de DRM/anticheat,
+requisitos gráficos, de audio y de entrada, ni la matriz inicial de aplicaciones
+de prueba. `dp app install` no consulta el motor.
 
 ---
 
@@ -277,9 +289,13 @@ paralelas.
 `dp app inspect <path>` es de solo lectura y no toca el prefijo ni el catálogo;
 `dp app install <path> [--replace]` toma el lock de escritura del Shared Prefix
 Manager antes de escribir; `dp app list [--json]` abre el catálogo, que se crea
-vacío si no existe. Los tres aceptan `--json` y usan código 1 para un fallo de
-ejecución y 2 para un uso incorrecto. Detalle en
-[`application-install.md`](application-install.md).
+vacío si no existe; `dp app compat <path>` analiza el bundle sin resolver siquiera
+la ubicación del prefijo. Todos aceptan `--json`. `inspect`, `install` y `list`
+usan código 1 para un fallo de ejecución y 2 para un uso incorrecto; `compat` sale
+con 0 cuando el veredicto es `compatible` o `partial` y con 1 cuando es
+`not_compatible`, `unknown` o el análisis falló. Detalle en
+[`application-install.md`](application-install.md) y
+[`application-compat.md`](application-compat.md).
 
 `dp hardware scan` acepta `--json` y sale con código 1 solo cuando el reporte
 llega `failed`, para que un script distinga un reporte degradado pero usable de
